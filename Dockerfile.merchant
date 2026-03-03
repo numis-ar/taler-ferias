@@ -1,0 +1,36 @@
+FROM ubuntu:24.04
+
+# Prevent interactive prompts during installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install base dependencies first
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg2 \
+    curl \
+    jq \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add Taler repository
+RUN mkdir -p /etc/apt/keyrings && \
+    wget -O /etc/apt/keyrings/taler-systems.gpg https://taler.net/taler-systems.gpg && \
+    echo 'deb [signed-by=/etc/apt/keyrings/taler-systems.gpg] https://deb.taler.net/apt/ubuntu/ noble main' > /etc/apt/sources.list.d/taler.list
+
+# Install Taler merchant
+RUN apt-get update && apt-get install -y \
+    taler-merchant \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create taler user
+RUN useradd -r -s /bin/false taler-merchant 2>/dev/null || true
+
+# Create config directory
+RUN mkdir -p /etc/taler /var/lib/taler-merchant
+
+WORKDIR /var/lib/taler-merchant
+
+EXPOSE 9966
+
+CMD ["tail", "-f", "/dev/null"]

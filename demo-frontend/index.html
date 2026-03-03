@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taler Demo Store - Public Demo Exchange</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            color: white;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        .subtitle {
+            text-align: center;
+            color: rgba(255,255,255,0.9);
+            margin-bottom: 30px;
+            font-size: 1.2em;
+        }
+        .setup-card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        .setup-card h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .setup-card h2::before {
+            content: "📋";
+        }
+        .step {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+        .step-number {
+            width: 30px;
+            height: 30px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+        .step-content h3 {
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .step-content p {
+            color: #666;
+            line-height: 1.6;
+        }
+        .step-content a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        .step-content a:hover {
+            text-decoration: underline;
+        }
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+        .product-card {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease;
+        }
+        .product-card:hover {
+            transform: translateY(-5px);
+        }
+        .product-image {
+            height: 180px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4em;
+        }
+        .product-info {
+            padding: 20px;
+        }
+        .product-name {
+            font-size: 1.3em;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        .product-price {
+            font-size: 1.5em;
+            color: #667eea;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        .buy-button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: opacity 0.3s;
+        }
+        .buy-button:hover {
+            opacity: 0.9;
+        }
+        .info-box {
+            background: #e3f2fd;
+            border: 1px solid #2196f3;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .info-box h3 {
+            color: #1976d2;
+            margin-bottom: 10px;
+        }
+        .info-box p {
+            color: #555;
+            line-height: 1.6;
+        }
+        .merchant-link {
+            display: inline-block;
+            background: #4caf50;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            margin-top: 10px;
+        }
+        .merchant-link:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛍️ Taler Demo Store</h1>
+        <p class="subtitle">Using Public Demo Exchange - Fully Functional Payment Flow</p>
+
+        <div class="setup-card">
+            <h2>Setup Instructions</h2>
+            
+            <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h3>Install Taler Wallet</h3>
+                    <p>Download and install the Taler Wallet browser extension:<br>
+                    <a href="https://wallet.demo.taler.net/" target="_blank">https://wallet.demo.taler.net/</a><br>
+                    Available for Firefox and Chrome.</p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Get KUDOS</h3>
+                    <p>Visit the demo bank to withdraw KUDOS (test currency):<br>
+                    <a href="https://bank.demo.taler.net/" target="_blank">https://bank.demo.taler.net/</a><br>
+                    Login with any username and password (demo account).</p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Create an Order</h3>
+                    <p>Use the Merchant Web UI to create an order:<br>
+                    <a href="http://localhost:9966/webui/" target="_blank" class="merchant-link">Open Merchant Web UI</a><br>
+                    Login: <code>admin</code> / Password: <code>adminpassword</code></p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <h3>Pay with Taler</h3>
+                    <p>After creating an order, click "Pay" to trigger the Taler Wallet.<br>
+                    The wallet will automatically process the payment!</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-box">
+            <h3>🔌 System Status</h3>
+            <p><strong>Merchant Backend:</strong> <span style="color: green;">✓ Running</span> on port 9966<br>
+            <strong>Exchange:</strong> <span style="color: green;">✓ Connected</span> to https://exchange.demo.taler.net/<br>
+            <strong>Database:</strong> <span style="color: green;">✓ Connected</span> to PostgreSQL<br>
+            <strong>Currency:</strong> KUDOS (test currency)</p>
+        </div>
+
+        <div style="background: #f0f9f4; border: 2px solid #27ae60; border-radius: 10px; padding: 20px; margin-bottom: 30px; text-align: center;">
+            <h3 style="color: #27ae60; margin-bottom: 10px;">⚡ Quick QR Payment</h3>
+            <p style="color: #555; margin-bottom: 15px;">Generate a QR code for instant payment with your Taler Wallet</p>
+            <a href="/qr-payment.html" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; border-radius: 8px; text-decoration: none; font-size: 1.1em;">Generate QR Code →</a>
+        </div>
+
+        <div class="products-grid">
+            <div class="product-card">
+                <div class="product-image">📚</div>
+                <div class="product-info">
+                    <div class="product-name">Digital Book</div>
+                    <div class="product-price">5.00 KUDOS</div>
+                    <button class="buy-button" onclick="openMerchant()">Buy Now</button>
+                </div>
+            </div>
+
+            <div class="product-card">
+                <div class="product-image">🎵</div>
+                <div class="product-info">
+                    <div class="product-name">Music Album</div>
+                    <div class="product-price">10.00 KUDOS</div>
+                    <button class="buy-button" onclick="openMerchant()">Buy Now</button>
+                </div>
+            </div>
+
+            <div class="product-card">
+                <div class="product-image">🎮</div>
+                <div class="product-info">
+                    <div class="product-name">Game DLC</div>
+                    <div class="product-price">15.00 KUDOS</div>
+                    <button class="buy-button" onclick="openMerchant()">Buy Now</button>
+                </div>
+            </div>
+
+            <div class="product-card">
+                <div class="product-image">☕</div>
+                <div class="product-info">
+                    <div class="product-name">Coffee Voucher</div>
+                    <div class="product-price">3.50 KUDOS</div>
+                    <button class="buy-button" onclick="openMerchant()">Buy Now</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openMerchant() {
+            window.open('http://localhost:9966/webui/', '_blank');
+        }
+    </script>
+</body>
+</html>

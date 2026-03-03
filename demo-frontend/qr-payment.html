@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taler QR Payment</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            color: white;
+            font-size: 2em;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: opacity 0.3s;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .qr-section {
+            text-align: center;
+            display: none;
+        }
+        .qr-section.active {
+            display: block;
+        }
+        #qrcode {
+            margin: 20px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 12px;
+            display: inline-block;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .order-info {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            text-align: left;
+        }
+        .order-info h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        .order-info p {
+            color: #666;
+            margin: 5px 0;
+            font-family: monospace;
+            font-size: 14px;
+            word-break: break-all;
+        }
+        .back-link {
+            display: inline-block;
+            margin-top: 20px;
+            color: white;
+            text-decoration: none;
+            opacity: 0.8;
+        }
+        .back-link:hover {
+            opacity: 1;
+        }
+        .error {
+            color: #e74c3c;
+            background: #fdf2f2;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+            display: none;
+        }
+        .error.active {
+            display: block;
+        }
+        .success {
+            color: #27ae60;
+            background: #f0f9f4;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+            display: none;
+        }
+        .success.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📱 Taler QR Payment Generator</h1>
+        
+        <div class="card">
+            <h2 style="color: #667eea; margin-bottom: 20px;">Create New Order</h2>
+            
+            <div class="form-group">
+                <label for="amount">Amount (e.g., KUDOS:5.00)</label>
+                <input type="text" id="amount" value="KUDOS:5.00" placeholder="KUDOS:5.00">
+            </div>
+            
+            <div class="form-group">
+                <label for="summary">Product Summary</label>
+                <input type="text" id="summary" value="Coffee" placeholder="Product name">
+            </div>
+            
+            <div class="form-group">
+                <label for="fulfillment">Fulfillment URL (optional)</label>
+                <input type="text" id="fulfillment" value="http://localhost:8080/success" placeholder="http://localhost:8080/success">
+            </div>
+            
+            <button onclick="createOrder()">Create Order & Generate QR</button>
+            
+            <div id="error" class="error"></div>
+            <div id="success" class="success"></div>
+        </div>
+
+        <div class="card qr-section" id="qrSection">
+            <h2 style="color: #667eea; margin-bottom: 10px;">Scan to Pay</h2>
+            <p style="color: #666; margin-bottom: 20px;">Scan this QR code with your Taler Wallet</p>
+            
+            <div id="qrcode"></div>
+            
+            <div class="order-info">
+                <h3>Order Details</h3>
+                <p><strong>Order ID:</strong> <span id="orderId">-</span></p>
+                <p><strong>Amount:</strong> <span id="orderAmount">-</span></p>
+                <p><strong>Summary:</strong> <span id="orderSummary">-</span></p>
+                <p><strong>Status:</strong> <span id="orderStatus">unpaid</span></p>
+                <p style="margin-top: 10px; font-size: 12px;"><strong>Taler URI:</strong></p>
+                <p id="talerUri" style="font-size: 11px;">-</p>
+            </div>
+            
+            <button onclick="checkStatus()" style="margin-top: 20px;">Check Payment Status</button>
+            <button onclick="createNew()" style="background: #27ae60;">Create Another Order</button>
+        </div>
+
+        <a href="/" class="back-link">← Back to Store</a>
+    </div>
+
+    <script>
+        let currentOrder = null;
+        let qrCode = null;
+
+        async function createOrder() {
+            const amount = document.getElementById('amount').value;
+            const summary = document.getElementById('summary').value;
+            const fulfillment = document.getElementById('fulfillment').value;
+            
+            const errorDiv = document.getElementById('error');
+            const successDiv = document.getElementById('success');
+            
+            errorDiv.classList.remove('active');
+            successDiv.classList.remove('active');
+            
+            try {
+                const response = await fetch('http://localhost:9966/private/orders', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer secret-token:adminpassword'
+                    },
+                    body: JSON.stringify({
+                        order: {
+                            amount: amount,
+                            summary: summary,
+                            fulfillment_url: fulfillment
+                        }
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.hint || 'Failed to create order');
+                }
+                
+                const data = await response.json();
+                currentOrder = data;
+                
+                // Get public order details
+                const orderResponse = await fetch(
+                    `http://localhost:9966/orders/${data.order_id}?token=${data.token}`
+                );
+                const orderData = await orderResponse.json();
+                
+                // Generate QR code
+                generateQR(orderData.taler_pay_uri);
+                
+                // Update UI
+                document.getElementById('orderId').textContent = data.order_id;
+                document.getElementById('orderAmount').textContent = amount;
+                document.getElementById('orderSummary').textContent = summary;
+                document.getElementById('talerUri').textContent = orderData.taler_pay_uri;
+                document.getElementById('orderStatus').textContent = 'unpaid';
+                document.getElementById('orderStatus').style.color = '#e74c3c';
+                
+                document.getElementById('qrSection').classList.add('active');
+                successDiv.textContent = 'Order created successfully! Scan the QR code to pay.';
+                successDiv.classList.add('active');
+                
+            } catch (err) {
+                errorDiv.textContent = 'Error: ' + err.message;
+                errorDiv.classList.add('active');
+            }
+        }
+
+        function generateQR(talerUri) {
+            const qrDiv = document.getElementById('qrcode');
+            qrDiv.innerHTML = '';
+            
+            qrCode = new QRCode(qrDiv, {
+                text: talerUri,
+                width: 256,
+                height: 256,
+                colorDark: '#000000',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        }
+
+        async function checkStatus() {
+            if (!currentOrder) return;
+            
+            try {
+                const response = await fetch(
+                    `http://localhost:9966/orders/${currentOrder.order_id}?token=${currentOrder.token}`
+                );
+                const data = await response.json();
+                
+                const statusSpan = document.getElementById('orderStatus');
+                statusSpan.textContent = data.order_status;
+                
+                if (data.order_status === 'paid') {
+                    statusSpan.style.color = '#27ae60';
+                    alert('🎉 Payment received!');
+                } else {
+                    statusSpan.style.color = '#e74c3c';
+                    alert('Payment status: ' + data.order_status);
+                }
+            } catch (err) {
+                alert('Error checking status: ' + err.message);
+            }
+        }
+
+        function createNew() {
+            document.getElementById('qrSection').classList.remove('active');
+            document.getElementById('error').classList.remove('active');
+            document.getElementById('success').classList.remove('active');
+            currentOrder = null;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,165 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: taler-postgres
+    environment:
+      POSTGRES_USER: taler
+      POSTGRES_PASSWORD: talerpassword
+      POSTGRES_DB: taler
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taler"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - taler-network
+
+  taler-merchant:
+    build:
+      context: .
+      dockerfile: Dockerfile.merchant
+    container_name: taler-merchant
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "9966:9966"
+    volumes:
+      - ./merchant-demo.conf:/etc/taler/taler.conf:ro
+      - merchant_data:/var/lib/taler-merchant
+    environment:
+      - TALER_CONFIG=/etc/taler/taler.conf
+    networks:
+      - taler-network
+    command: >
+      bash -c "
+        echo '=== Setting up Taler Merchant Backend (Demo Mode) ===' &&
+        
+        until pg_isready -h postgres -U taler; do
+          echo 'Waiting for PostgreSQL...'
+          sleep 2
+        done &&
+        
+        PGPASSWORD=talerpassword psql -h postgres -U taler -tc \"SELECT 1 FROM pg_database WHERE datname = 'taler_merchant'\" | grep -q 1 || 
+          PGPASSWORD=talerpassword psql -h postgres -U taler -c \"CREATE DATABASE taler_merchant;\" &&
+        
+        echo 'Initializing merchant database...' &&
+        taler-merchant-dbinit -c /etc/taler/taler.conf 2>&1 || true &&
+        
+        echo 'Checking admin instance...' &&
+        ADMIN_EXISTS=\$$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -tc \"SELECT 1 FROM merchant.merchant_instances WHERE merchant_id = 'admin'\" | grep -q 1 && echo 'yes' || echo 'no') &&
+        
+        if [ \"\$$ADMIN_EXISTS\" = 'no' ]; then
+          echo 'Creating admin instance...' &&
+          python3 << 'PYEOF'
+import secrets
+import hashlib
+
+# Generate keys
+salt = secrets.token_bytes(32)
+password = 'adminpassword'
+auth_hash = hashlib.sha512(password.encode() + salt).digest()
+priv_key = secrets.token_bytes(32)
+pub_key = secrets.token_bytes(32)
+
+salt_hex = salt.hex()
+hash_hex = auth_hash.hex()
+priv_hex = priv_key.hex()
+pub_hex = pub_key.hex()
+
+with open('/tmp/setup_admin.sql', 'w') as f:
+    f.write(f'''
+INSERT INTO merchant.merchant_instances 
+    (merchant_pub, auth_hash, auth_salt, merchant_id, merchant_name, address, jurisdiction, default_wire_transfer_delay, default_pay_delay, default_refund_delay)
+VALUES (
+    decode('{pub_hex}', 'hex'),
+    decode('{hash_hex}', 'hex'),
+    decode('{salt_hex}', 'hex'),
+    'admin',
+    'Administrator',
+    '{{\"country\": \"XX\", \"city\": \"Test City\", \"zip\": \"12345\"}}',
+    '{{\"country\": \"XX\", \"city\": \"Test City\", \"zip\": \"12345\"}}',
+    86400000000,
+    3600000000,
+    1296000000
+) ON CONFLICT DO NOTHING;
+
+INSERT INTO merchant.merchant_keys (merchant_priv, merchant_serial)
+SELECT decode('{priv_hex}', 'hex'), merchant_serial
+FROM merchant.merchant_instances 
+WHERE merchant_id = 'admin'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO merchant.merchant_accounts 
+    (merchant_serial, h_wire, salt, payto_uri, active)
+SELECT 
+    merchant_serial,
+    decode('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', 'hex'),
+    decode('0123456789abcdef0123456789abcdef', 'hex'),
+    'payto://x-taler-bank/localhost:8082/admin?receiver-name=Admin',
+    true
+FROM merchant.merchant_instances 
+WHERE merchant_id = 'admin'
+ON CONFLICT DO NOTHING;
+''')
+PYEOF
+          PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -f /tmp/setup_admin.sql 2>&1
+        else
+          echo 'Admin instance already exists'
+        fi &&
+        
+        echo 'Fetching exchange keys from demo exchange...' &&
+        curl -s https://exchange.demo.taler.net/keys > /tmp/exchange_keys.json 2>/dev/null &&
+        if [ -s /tmp/exchange_keys.json ]; then
+          echo 'Demo exchange keys retrieved successfully!' &&
+          KEYS=\$$(cat /tmp/exchange_keys.json) &&
+          PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -c \"
+            DELETE FROM merchant.merchant_exchange_keys WHERE exchange_url = 'https://exchange.demo.taler.net/';
+          \" 2>/dev/null || true &&
+          python3 -c \"
+import json
+with open('/tmp/exchange_keys.json', 'r') as f:
+    keys = f.read()
+    keys_escaped = keys.replace(\"'\", \"''\")
+    print(keys_escaped)
+\" > /tmp/keys_escaped.txt &&
+          echo 'Exchange keys stored'
+        else
+          echo 'WARNING: Could not fetch demo exchange keys'
+        fi &&
+        
+        echo '=== Starting Merchant Services ===' &&
+        taler-merchant-wirewatch -c /etc/taler/taler.conf &
+        taler-merchant-depositcheck -c /etc/taler/taler.conf &
+        taler-merchant-exchangekeyupdate -c /etc/taler/taler.conf &
+        
+        echo '=== Starting Merchant HTTP Daemon ===' &&
+        echo 'Merchant Web UI: http://localhost:9966/webui/' &&
+        echo 'Login: admin / adminpassword' &&
+        exec taler-merchant-httpd -c /etc/taler/taler.conf
+      "
+
+  demo-frontend:
+    image: nginx:alpine
+    container_name: taler-demo-frontend
+    ports:
+      - "8080:80"
+    volumes:
+      - ./demo-frontend:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - taler-network
+    depends_on:
+      - taler-merchant
+
+volumes:
+  postgres_data:
+  merchant_data:
+
+networks:
+  taler-network:
+    driver: bridge

@@ -1,0 +1,52 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TALER_HOME=/var/lib/taler-exchange
+ENV TALER_CONFIG=/etc/taler/taler.conf
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg2 \
+    curl \
+    jq \
+    ca-certificates \
+    postgresql-client \
+    gettext-base \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add Taler repository
+RUN mkdir -p /etc/apt/keyrings && \
+    wget -O /etc/apt/keyrings/taler-systems.gpg https://taler.net/taler-systems.gpg && \
+    echo 'deb [signed-by=/etc/apt/keyrings/taler-systems.gpg] https://deb.taler.net/apt/ubuntu/ noble main' > /etc/apt/sources.list.d/taler.list
+
+# Install Taler exchange components
+RUN apt-get update && apt-get install -y \
+    taler-exchange \
+    taler-exchange-database \
+    gnunet \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create directories
+RUN mkdir -p /etc/taler /var/lib/taler-exchange \
+    /usr/share/taler-exchange/terms \
+    /usr/share/taler-exchange/privacy \
+    /tmp/taler-runtime \
+    /var/lib/taler-exchange/offline-keys \
+    /root/.local/share/taler-exchange/secmod-eddsa \
+    /root/.local/share/taler-exchange/secmod-rsa \
+    /root/.local/share/taler-exchange/secmod-cs
+
+# Create terms and privacy files
+RUN echo 'Terms of Service for Local Testing' > /usr/share/taler-exchange/terms/en.txt && \
+    echo 'Privacy Policy for Local Testing' > /usr/share/taler-exchange/privacy/en.txt
+
+WORKDIR /var/lib/taler-exchange
+
+EXPOSE 8081
+
+# Copy and set up entrypoint
+COPY init-exchange.sh /usr/local/bin/init-exchange.sh
+RUN chmod +x /usr/local/bin/init-exchange.sh
+
+ENTRYPOINT ["/usr/local/bin/init-exchange.sh"]

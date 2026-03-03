@@ -1,0 +1,107 @@
+{
+  "name": "kimi-statusbar",
+  "displayName": "Kimi Status Bar",
+  "description": "Display Kimi CLI usage details in VS Code status bar",
+  "version": "1.0.0",
+  "publisher": "kimi-cli",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "kimiStatusbar.showDetails",
+        "title": "Show Kimi Usage Details",
+        "category": "Kimi"
+      },
+      {
+        "command": "kimiStatusbar.refresh",
+        "title": "Refresh Stats",
+        "category": "Kimi",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "kimiStatusbar.openSettings",
+        "title": "Open Settings",
+        "category": "Kimi"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "kimiStatusbar.showDetails",
+          "when": "true"
+        },
+        {
+          "command": "kimiStatusbar.refresh",
+          "when": "true"
+        },
+        {
+          "command": "kimiStatusbar.openSettings",
+          "when": "true"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Kimi Status Bar",
+      "properties": {
+        "kimiStatusbar.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable the Kimi status bar item",
+          "scope": "application"
+        },
+        "kimiStatusbar.refreshInterval": {
+          "type": "number",
+          "default": 30,
+          "minimum": 5,
+          "maximum": 3600,
+          "description": "Refresh interval in seconds",
+          "scope": "application"
+        },
+        "kimiStatusbar.showIcon": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show sparkle icon in status bar",
+          "scope": "application"
+        },
+        "kimi.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Kimi API Key (kept in secure storage)",
+          "scope": "application"
+        },
+        "kimi.model": {
+          "type": "string",
+          "default": "kimi-k2",
+          "enum": ["kimi-k2", "kimi-k2.5"],
+          "description": "Default Kimi model to use",
+          "scope": "application"
+        },
+        "kimi.baseUrl": {
+          "type": "string",
+          "default": "https://api.moonshot.cn/v1",
+          "description": "Kimi API base URL",
+          "scope": "application"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^18.x",
+    "@types/vscode": "^1.74.0",
+    "typescript": "^5.x"
+  }
+}
