@@ -66,15 +66,30 @@ echo "Using ports: Frontend=${FRONTEND_PORT}, Merchant=${MERCHANT_PORT}"
 # 3. Create docker-compose override file for dynamic ports (safer than modifying main file)
 cat > docker-compose.override.yml << EOFCOMPOSE
 services:
+  postgres:
+    container_name: taler-postgres-${SUBDOMAIN}
+    volumes:
+      - postgres_data_${SUBDOMAIN}:/var/lib/postgresql/data
+    
   taler-merchant:
+    container_name: taler-merchant-${SUBDOMAIN}
+    volumes:
+      - ./merchant-demo.conf:/etc/taler/taler.conf:ro
+      - ./setup_admin.py:/tmp/setup_admin.py:ro
+      - merchant_data_${SUBDOMAIN}:/var/lib/taler-merchant
     ports:
       - "0.0.0.0:${MERCHANT_PORT}:9966"
     expose: []
     
   demo-frontend:
+    container_name: taler-demo-frontend-${SUBDOMAIN}
     ports:
       - "0.0.0.0:${FRONTEND_PORT}:80"
     expose: []
+
+volumes:
+  postgres_data_${SUBDOMAIN}:
+  merchant_data_${SUBDOMAIN}:
 EOFCOMPOSE
 
 # 4. Update frontend HTML with the full domain
