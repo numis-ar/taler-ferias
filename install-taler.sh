@@ -19,7 +19,18 @@ echo "=== Installing Taler on ${FULL_DOMAIN} ==="
 
 # Check prerequisites
 command -v docker >/dev/null 2>&1 || { echo "Docker required but not installed. Aborting."; exit 1; }
-command -v docker-compose >/dev/null 2>&1 || { echo "Docker Compose required but not installed. Aborting."; exit 1; }
+
+# Check for docker compose (modern) or docker-compose (legacy)
+if docker compose version &>/dev/null; then
+    COMPOSE_CMD="docker compose"
+elif command -v docker-compose &>/dev/null; then
+    COMPOSE_CMD="docker-compose"
+else
+    echo "Docker Compose required but not installed. Aborting."
+    echo "Install with: sudo apt install docker-compose-plugin"
+    exit 1
+fi
+
 command -v nginx >/dev/null 2>&1 || { echo "Nginx required but not installed. Aborting."; exit 1; }
 
 # 1. Create installation directory
@@ -149,14 +160,14 @@ sudo ufw allow "${FRONTEND_PORT}/tcp" 2>/dev/null || true
 
 # 8. Start Docker services
 echo "Starting Taler services..."
-docker-compose up -d
+$COMPOSE_CMD up -d
 
 # Wait for services to be healthy
 echo "Waiting for services to start..."
 sleep 5
 
 # Check if services are running
-if docker-compose ps | grep -q "Up"; then
+if $COMPOSE_CMD ps | grep -q "Up"; then
     echo ""
     echo "========================================"
     echo "=== Installation Complete! ==="
@@ -172,10 +183,10 @@ if docker-compose ps | grep -q "Up"; then
     echo "  Frontend:    http://localhost:${FRONTEND_PORT}"
     echo "  Merchant:    http://localhost:${MERCHANT_PORT}"
     echo ""
-    echo "To view logs:  cd ${INSTALL_DIR} && docker-compose logs -f"
-    echo "To stop:       cd ${INSTALL_DIR} && docker-compose down"
+    echo "To view logs:  cd ${INSTALL_DIR} && $COMPOSE_CMD logs -f"
+    echo "To stop:       cd ${INSTALL_DIR} && $COMPOSE_CMD down"
     echo ""
 else
-    echo "ERROR: Services failed to start. Check logs with: cd ${INSTALL_DIR} && docker-compose logs"
+    echo "ERROR: Services failed to start. Check logs with: cd ${INSTALL_DIR} && $COMPOSE_CMD logs"
     exit 1
 fi
