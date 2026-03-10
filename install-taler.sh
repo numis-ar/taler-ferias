@@ -79,13 +79,11 @@ services:
       - merchant_data_${SUBDOMAIN}:/var/lib/taler-merchant
     ports:
       - "0.0.0.0:${MERCHANT_PORT}:9966"
-    expose: []
     
   demo-frontend:
     container_name: taler-demo-frontend-${SUBDOMAIN}
     ports:
       - "0.0.0.0:${FRONTEND_PORT}:80"
-    expose: []
 
 volumes:
   postgres_data_${SUBDOMAIN}:
