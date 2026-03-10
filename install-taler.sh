@@ -164,9 +164,14 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Prefix /webui;
         proxy_set_header Authorization \$http_authorization;
+        # Handle various redirect formats from merchant backend
         proxy_redirect http://localhost:${MERCHANT_PORT}/webui/ /webui/;
-        proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
+        proxy_redirect http://localhost:${MERCHANT_PORT}/ /webui/;
+        proxy_redirect /webui/ /webui/;
+        # Handle relative redirects that might cause double webui
+        proxy_redirect webui/ /webui/;
     }
 
     # Merchant API endpoints
@@ -230,9 +235,12 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Prefix /webui;
         proxy_set_header Authorization \$http_authorization;
         proxy_redirect http://localhost:${MERCHANT_PORT}/webui/ /webui/;
-        proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
+        proxy_redirect http://localhost:${MERCHANT_PORT}/ /webui/;
+        proxy_redirect /webui/ /webui/;
+        proxy_redirect webui/ /webui/;
     }
 
     location /private/ {
@@ -313,9 +321,12 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Prefix /webui;
         proxy_set_header Authorization \$http_authorization;
         proxy_redirect http://localhost:${MERCHANT_PORT}/webui/ /webui/;
-        proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
+        proxy_redirect http://localhost:${MERCHANT_PORT}/ /webui/;
+        proxy_redirect /webui/ /webui/;
+        proxy_redirect webui/ /webui/;
     }
 
     location /private/ {
