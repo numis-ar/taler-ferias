@@ -51,9 +51,20 @@ FRONTEND_PORT=$((8080 + PORT_OFFSET))
 
 echo "Using ports: Frontend=${FRONTEND_PORT}, Merchant=${MERCHANT_PORT}"
 
-# 3. Update docker-compose.yml to use dynamic ports
-sed -i "s/\"9966:9966\"/\"0.0.0.0:${MERCHANT_PORT}:9966\"/" docker-compose.yml
-sed -i "s/\"8080:80\"/\"0.0.0.0:${FRONTEND_PORT}:80\"/" docker-compose.yml
+# 3. Create docker-compose override file for dynamic ports (safer than modifying main file)
+cat > docker-compose.override.yml << EOFCOMPOSE
+version: '3.8'
+services:
+  taler-merchant:
+    ports:
+      - "0.0.0.0:${MERCHANT_PORT}:9966"
+    expose: []
+    
+  demo-frontend:
+    ports:
+      - "0.0.0.0:${FRONTEND_PORT}:80"
+    expose: []
+EOFCOMPOSE
 
 # 4. Update frontend HTML with the full domain
 echo "Updating frontend configuration..."
