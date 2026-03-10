@@ -91,13 +91,16 @@ EOFCOMPOSE
 
 # 4. Update frontend HTML with the full domain
 echo "Updating frontend configuration..."
-sed -i "s/localhost:9966/${FULL_DOMAIN}\/webui/g" demo-frontend/index.html
+# Update Merchant Web UI links
+sed -i "s|http://localhost:9966/webui/|https://${FULL_DOMAIN}/webui/|g" demo-frontend/index.html
+sed -i "s|localhost:9966/webui|${FULL_DOMAIN}/webui|g" demo-frontend/index.html
 sed -i "s/http:\/\/localhost:8080/https:\/\/${FULL_DOMAIN}/g" demo-frontend/index.html
-sed -i "s/localhost:9966/${FULL_DOMAIN}\/webui/g" demo-frontend/qr-payment.html
+# Update API URLs in qr-payment.html
+sed -i "s|http://localhost:9966|https://${FULL_DOMAIN}|g" demo-frontend/qr-payment.html
 
 # Also update any protocol-relative URLs
 sed -i "s|window\.open('http://localhost:9966/webui/'|window.open('https://${FULL_DOMAIN}/webui/'|g" demo-frontend/index.html
-sed -i 's|href="http://localhost:9966/webui/"|href="https://${FULL_DOMAIN}/webui/"|g' demo-frontend/index.html
+sed -i "s|href=\"http://localhost:9966/webui/\"|href=\"https://${FULL_DOMAIN}/webui/\"|g" demo-frontend/index.html
 
 # 5. Create nginx config for subdomain
 echo "Creating nginx configuration..."
