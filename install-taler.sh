@@ -151,7 +151,11 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
-    # Merchant Web UI
+    # Merchant Web UI - handle redirect from /webui to /webui/
+    location = /webui {
+        return 301 /webui/;
+    }
+    
     location /webui/ {
         proxy_pass http://localhost:${MERCHANT_PORT}/webui/;
         proxy_set_header Host \$host;
@@ -214,6 +218,10 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
+    location = /webui {
+        return 301 /webui/;
+    }
+    
     location /webui/ {
         proxy_pass http://localhost:${MERCHANT_PORT}/webui/;
         proxy_set_header Host \$host;
@@ -293,6 +301,10 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
+    location = /webui {
+        return 301 /webui/;
+    }
+    
     location /webui/ {
         proxy_pass http://localhost:${MERCHANT_PORT}/webui/;
         proxy_set_header Host \$host;
