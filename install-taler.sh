@@ -65,7 +65,6 @@ echo "Using ports: Frontend=${FRONTEND_PORT}, Merchant=${MERCHANT_PORT}"
 
 # 3. Create docker-compose override file for dynamic ports (safer than modifying main file)
 cat > docker-compose.override.yml << EOFCOMPOSE
-version: '3.8'
 services:
   taler-merchant:
     ports:

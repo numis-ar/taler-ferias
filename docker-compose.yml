@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
@@ -54,9 +52,9 @@ services:
         taler-merchant-dbinit -c /etc/taler/taler.conf 2>&1 || true
         
         echo 'Checking admin instance...'
-        ADMIN_EXISTS=$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -tc "SELECT 1 FROM merchant.merchant_instances WHERE merchant_id = 'admin'" 2>/dev/null | grep -q 1 && echo 'yes' || echo 'no')
+        ADMIN_EXISTS=$$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -tc "SELECT 1 FROM merchant.merchant_instances WHERE merchant_id = 'admin'" 2>/dev/null | grep -q 1 && echo 'yes' || echo 'no')
         
-        if [ "$ADMIN_EXISTS" = 'no' ]; then
+        if [ "$$ADMIN_EXISTS" = 'no' ]; then
           echo 'Creating admin instance...'
           python3 /tmp/setup_admin.py && \
           PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -f /tmp/setup_admin.sql
@@ -73,8 +71,8 @@ services:
         fi
         
         # Verify admin exists
-        ADMIN_CHECK=$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -tc "SELECT merchant_id FROM merchant.merchant_instances WHERE merchant_id = 'admin'" 2>/dev/null | xargs)
-        if [ "$ADMIN_CHECK" = 'admin' ]; then
+        ADMIN_CHECK=$$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -tc "SELECT merchant_id FROM merchant.merchant_instances WHERE merchant_id = 'admin'" 2>/dev/null | xargs)
+        if [ "$$ADMIN_CHECK" = 'admin' ]; then
           echo '✓ Admin instance verified'
         else
           echo 'WARNING: Admin instance not found after setup!'
