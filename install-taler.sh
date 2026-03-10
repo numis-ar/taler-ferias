@@ -86,10 +86,12 @@ services:
     container_name: taler-exchange-${SUBDOMAIN}
     environment:
       - FULL_DOMAIN=${FULL_DOMAIN}
+      - DB_PASSWORD=talerpassword
     ports:
       - "0.0.0.0:${EXCHANGE_PORT}:8081"
     volumes:
       - exchange_data_${SUBDOMAIN}:/var/lib/taler-exchange
+      - ./exchange-local.conf:/etc/taler/taler.conf:ro
   
   taler-merchant:
     container_name: taler-merchant-${SUBDOMAIN}

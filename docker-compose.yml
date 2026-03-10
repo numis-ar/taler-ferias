@@ -61,6 +61,12 @@ services:
       - |
         echo '=== Setting up Taler Exchange ==='
         
+        # Replace placeholder in config with actual domain from env
+        if [ -n "$$FULL_DOMAIN" ]; then
+          sed -i "s|EXCHANGE_HOST_PLACEHOLDER|$$FULL_DOMAIN|g" /etc/taler/taler.conf
+          echo "Configured for domain: $$FULL_DOMAIN"
+        fi
+        
         until pg_isready -h postgres -U taler; do
           echo 'Waiting for PostgreSQL...'
           sleep 2
@@ -85,9 +91,22 @@ services:
           sleep 2
         done
         
-        # Run exchange initialization (key generation, etc)
-        echo 'Running exchange initialization...'
-        bash /tmp/init-exchange.sh || echo 'Exchange init completed with warnings'
+        # Generate master key if not exists
+        if [ ! -f /var/lib/taler-exchange/master.priv ]; then
+          echo 'Generating exchange master key...'
+          taler-exchange-offline -c /etc/taler/taler.conf generate-key 2>&1 || echo 'Key may already exist'
+        fi
+        
+        # Generate denomination keys
+        echo 'Generating denomination keys...'
+        taler-exchange-offline -c /etc/taler/taler.conf wire-fees 2024 KUDOS 0 0 0 2>&1 || true
+        taler-exchange-offline -c /etc/taler/taler.conf future-denominations 2>&1 || true
+        taler-exchange-offline -c /etc/taler/taler.conf sign 2>&1 || echo 'Signing may need restart'
+        
+        # Show master key
+        echo ''
+        echo 'Exchange Master Public Key:'
+        taler-exchange-keyup -c /etc/taler/taler.conf 2>/dev/null || echo '(will be available after startup)'
         
         echo '=== Starting Exchange Services ==='
         taler-exchange-wirewatch -c /etc/taler/taler.conf &
