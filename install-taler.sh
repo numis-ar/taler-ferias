@@ -75,7 +75,6 @@ services:
     container_name: taler-merchant-${SUBDOMAIN}
     volumes:
       - ./merchant-demo.conf:/etc/taler/taler.conf:ro
-      - ./setup_admin.py:/tmp/setup_admin.py:ro
       - merchant_data_${SUBDOMAIN}:/var/lib/taler-merchant
     ports:
       - "0.0.0.0:${MERCHANT_PORT}:9966"
@@ -354,6 +353,29 @@ $COMPOSE_CMD up -d
 # Wait for services to be healthy
 echo "Waiting for services to start..."
 sleep 5
+
+# Ensure admin instance is created using taler-merchant-passwd
+echo "Ensuring admin instance is properly configured..."
+docker exec taler-merchant-${SUBDOMAIN} bash -c '
+  # Wait for merchant to be ready
+  for i in {1..30}; do
+    if pg_isready -h postgres -U taler >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+  
+  # Check if admin exists
+  ADMIN_EXISTS=$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -tc "SELECT 1 FROM merchant.merchant_instances WHERE merchant_id = '"'"'admin'"'"'" 2>/dev/null | grep -q 1 && echo "yes" || echo "no")
+  
+  if [ "$ADMIN_EXISTS" = "no" ]; then
+    echo "Creating admin instance using taler-merchant-passwd..."
+    TALER_MERCHANT_PASSWORD=adminpassword taler-merchant-passwd -c /etc/taler/taler.conf --instance=admin
+  else
+    echo "Admin instance already exists, updating password..."
+    TALER_MERCHANT_PASSWORD=adminpassword taler-merchant-passwd -c /etc/taler/taler.conf --instance=admin
+  fi
+' 2>&1 || echo "Note: taler-merchant-passwd may have warnings if service is starting"
 
 # Check if services are running
 if $COMPOSE_CMD ps | grep -q "Up"; then
