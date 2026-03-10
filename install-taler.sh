@@ -60,8 +60,10 @@ cd "$INSTALL_DIR"
 PORT_OFFSET=$(echo "$SUBDOMAIN" | cksum | cut -d' ' -f1 | awk '{print $1 % 1000}')
 MERCHANT_PORT=$((9966 + PORT_OFFSET))
 FRONTEND_PORT=$((8080 + PORT_OFFSET))
+EXCHANGE_PORT=$((8081 + PORT_OFFSET))
+BANK_PORT=$((8082 + PORT_OFFSET))
 
-echo "Using ports: Frontend=${FRONTEND_PORT}, Merchant=${MERCHANT_PORT}"
+echo "Using ports: Frontend=${FRONTEND_PORT}, Merchant=${MERCHANT_PORT}, Exchange=${EXCHANGE_PORT}, Bank=${BANK_PORT}"
 
 # 3. Create docker-compose override file for dynamic ports (safer than modifying main file)
 cat > docker-compose.override.yml << EOFCOMPOSE
@@ -71,8 +73,29 @@ services:
     volumes:
       - postgres_data_${SUBDOMAIN}:/var/lib/postgresql/data
     
+  libeufin-bank:
+    container_name: taler-bank-${SUBDOMAIN}
+    environment:
+      - LIBEUFIN_BANK_BASE_URL=https://${FULL_DOMAIN}/bank/
+    ports:
+      - "0.0.0.0:${BANK_PORT}:8082"
+    volumes:
+      - libeufin_data_${SUBDOMAIN}:/var/lib/libeufin
+  
+  taler-exchange:
+    container_name: taler-exchange-${SUBDOMAIN}
+    environment:
+      - FULL_DOMAIN=${FULL_DOMAIN}
+    ports:
+      - "0.0.0.0:${EXCHANGE_PORT}:8081"
+    volumes:
+      - exchange_data_${SUBDOMAIN}:/var/lib/taler-exchange
+  
   taler-merchant:
     container_name: taler-merchant-${SUBDOMAIN}
+    environment:
+      - EXCHANGE_URL=http://taler-exchange:8081
+      - FULL_DOMAIN=${FULL_DOMAIN}
     volumes:
       - ./merchant-demo.conf:/etc/taler/taler.conf:ro
       - merchant_data_${SUBDOMAIN}:/var/lib/taler-merchant
@@ -87,10 +110,16 @@ services:
 volumes:
   postgres_data_${SUBDOMAIN}:
   merchant_data_${SUBDOMAIN}:
+  exchange_data_${SUBDOMAIN}:
+  libeufin_data_${SUBDOMAIN}:
 EOFCOMPOSE
 
-# 4. Update frontend HTML with the full domain
-echo "Updating frontend configuration..."
+# 4. Update configuration files with the full domain
+echo "Updating configuration files..."
+
+# Update exchange configuration
+sed -i "s|https://\${FULL_DOMAIN}/exchange/|https://${FULL_DOMAIN}/exchange/|g" exchange-local.conf || true
+
 # Update Merchant Web UI links
 sed -i "s|http://localhost:9966/webui/|https://${FULL_DOMAIN}/webui/|g" demo-frontend/index.html
 sed -i "s|localhost:9966/webui|${FULL_DOMAIN}/webui|g" demo-frontend/index.html
@@ -192,6 +221,43 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
+
+    # Taler Exchange
+    location /exchange/ {
+        proxy_pass http://localhost:${EXCHANGE_PORT}/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_redirect http://localhost:${EXCHANGE_PORT}/ /exchange/;
+        
+        # WebSocket support for real-time updates
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # Libeufin Bank
+    location /bank/ {
+        proxy_pass http://localhost:${BANK_PORT}/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_redirect http://localhost:${BANK_PORT}/ /bank/;
+        
+        # Handle bank's own redirects
+        proxy_redirect / /bank/;
+    }
+
+    # Bank API endpoints (some use different paths)
+    location /taler-bank-integration/ {
+        proxy_pass http://localhost:${BANK_PORT}/taler-bank-integration/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
 }
 EOF
 
@@ -261,6 +327,32 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header Authorization \$http_authorization;
         proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
+    }
+
+    location /exchange/ {
+        proxy_pass http://localhost:${EXCHANGE_PORT}/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_redirect http://localhost:${EXCHANGE_PORT}/ /exchange/;
+    }
+
+    location /bank/ {
+        proxy_pass http://localhost:${BANK_PORT}/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_redirect http://localhost:${BANK_PORT}/ /bank/;
+    }
+
+    location /taler-bank-integration/ {
+        proxy_pass http://localhost:${BANK_PORT}/taler-bank-integration/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
 EOF
@@ -348,6 +440,32 @@ server {
         proxy_set_header Authorization \$http_authorization;
         proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
     }
+
+    location /exchange/ {
+        proxy_pass http://localhost:${EXCHANGE_PORT}/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_redirect http://localhost:${EXCHANGE_PORT}/ /exchange/;
+    }
+
+    location /bank/ {
+        proxy_pass http://localhost:${BANK_PORT}/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_redirect http://localhost:${BANK_PORT}/ /bank/;
+    }
+
+    location /taler-bank-integration/ {
+        proxy_pass http://localhost:${BANK_PORT}/taler-bank-integration/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
 }
 EOF
     sudo ln -sf "/etc/nginx/sites-available/taler-${SUBDOMAIN}" "/etc/nginx/sites-enabled/"
@@ -359,6 +477,8 @@ fi
 echo "Configuring firewall..."
 sudo ufw allow "${MERCHANT_PORT}/tcp" 2>/dev/null || true
 sudo ufw allow "${FRONTEND_PORT}/tcp" 2>/dev/null || true
+sudo ufw allow "${EXCHANGE_PORT}/tcp" 2>/dev/null || true
+sudo ufw allow "${BANK_PORT}/tcp" 2>/dev/null || true
 
 # 8. Start Docker services
 echo "Starting Taler services..."
@@ -391,24 +511,35 @@ fi
 if $COMPOSE_CMD ps | grep -q "Up"; then
     echo ""
     echo "========================================"
-    echo "=== Installation Complete! ==="
+    echo "=== Taler Infrastructure Complete! ==="
     echo "========================================"
     echo ""
     echo "Demo Store:    ${BASE_URL}"
     echo "Merchant UI:   ${BASE_URL}/webui/"
+    echo "Bank UI:       ${BASE_URL}/bank/"
+    echo "Exchange API:  ${BASE_URL}/exchange/"
     echo ""
-    echo "Login:         admin"
-    echo "Password:      adminpassword"
+    echo "Default Credentials:"
+    echo "  Merchant:    admin / adminpassword"
+    echo "  Bank Admin:  admin / bankadmin"
+    echo "  Bank Users:  exchange / exchange_password"
+    echo "               merchant / merchant_password"
+    echo "               demo / demo_password"
     echo ""
     echo "Internal ports (for debugging):"
     echo "  Frontend:    http://localhost:${FRONTEND_PORT}"
     echo "  Merchant:    http://localhost:${MERCHANT_PORT}"
+    echo "  Exchange:    http://localhost:${EXCHANGE_PORT}"
+    echo "  Bank:        http://localhost:${BANK_PORT}"
+    echo ""
+    echo "Services are interconnected:"
+    echo "  - Store → Merchant → Exchange → Bank"
+    echo "  - All using KUDOS (demo currency)"
     echo ""
     echo "To view logs:  cd ${INSTALL_DIR} && $COMPOSE_CMD logs -f"
     echo "To stop:       cd ${INSTALL_DIR} && $COMPOSE_CMD down"
     echo ""
 else
     echo "ERROR: Services failed to start. Check logs with: cd ${INSTALL_DIR} && $COMPOSE_CMD logs"
-    exit 1
     exit 1
 fi

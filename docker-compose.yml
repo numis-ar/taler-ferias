@@ -6,13 +6,123 @@ services:
       POSTGRES_USER: taler
       POSTGRES_PASSWORD: talerpassword
       POSTGRES_DB: taler
+      POSTGRES_MULTIPLE_DATABASES: taler_merchant,taler_exchange,libeufin
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U taler"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - taler-network
+
+  libeufin-bank:
+    image: libeufin/bank:latest
+    container_name: taler-bank
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8082"
+    environment:
+      LIBEUFIN_BANK_DB_CONNECTION: jdbc:postgresql://postgres:5432/libeufin?user=taler&password=talerpassword
+      LIBEUFIN_BANK_ADMIN_LOGIN: admin
+      LIBEUFIN_BANK_ADMIN_PASSWORD: bankadmin
+      LIBEUFIN_BANK_HOST: 0.0.0.0
+      LIBEUFIN_BANK_PORT: 8082
+      LIBEUFIN_BANK_BASE_URL: https://${FULL_DOMAIN}/bank/
+      LIBEUFIN_BANK_TOP_SECRET: ${BANK_TOP_SECRET:-change-this-in-production}
+    volumes:
+      - libeufin_data:/var/lib/libeufin
+      - ./init-bank.sh:/tmp/init-bank.sh:ro
+    command:
+      - /bin/bash
+      - -c
+      - |
+        echo '=== Starting Libeufin Bank ==='
+        
+        # Wait for PostgreSQL
+        until pg_isready -h postgres -U taler; do
+          echo 'Waiting for PostgreSQL...'
+          sleep 2
+        done
+        
+        # Initialize database if needed
+        echo 'Initializing Libeufin Bank database...'
+        libeufin-bank db-init || true
+        
+        # Start the bank service in background
+        echo 'Starting Libeufin Bank service...'
+        libeufin-bank serve &
+        BANK_PID=$$!
+        
+        # Wait for bank to be ready
+        for i in {1..30}; do
+          if curl -sf http://localhost:8082/health >/dev/null 2>&1 || \
+             curl -sf http://localhost:8082/ >/dev/null 2>&1; then
+            echo 'Libeufin Bank is ready'
+            break
+          fi
+          echo "Waiting for bank to start... ($$i/30)"
+          sleep 2
+        done
+        
+        # Run initialization script
+        echo 'Running bank initialization...'
+        bash /tmp/init-bank.sh || echo 'Bank init script completed with warnings'
+        
+        # Keep the bank running
+        wait $$BANK_PID
+    networks:
+      - taler-network
+
+  taler-exchange:
+    build:
+      context: .
+      dockerfile: Dockerfile.exchange
+    container_name: taler-exchange
+    depends_on:
+      postgres:
+        condition: service_healthy
+      libeufin-bank:
+        condition: service_started
+    ports:
+      - "8081"
+    environment:
+      - TALER_CONFIG=/etc/taler/taler.conf
+      - DB_PASSWORD=talerpassword
+    volumes:
+      - ./exchange-local.conf:/etc/taler/taler.conf:ro
+      - exchange_data:/var/lib/taler-exchange
+      - ./init-exchange.sh:/tmp/init-exchange.sh:ro
+    command:
+      - /bin/bash
+      - -c
+      - |
+        echo '=== Setting up Taler Exchange ==='
+        
+        until pg_isready -h postgres -U taler; do
+          echo 'Waiting for PostgreSQL...'
+          sleep 2
+        done
+        
+        echo 'Initializing exchange database...'
+        taler-exchange-dbinit -c /etc/taler/taler.conf 2>&1 || true
+        
+        # Run exchange initialization (key generation, etc)
+        echo 'Running exchange initialization...'
+        bash /tmp/init-exchange.sh || echo 'Exchange init completed with warnings'
+        
+        echo '=== Starting Exchange Services ==='
+        taler-exchange-wirewatch -c /etc/taler/taler.conf &
+        taler-exchange-closer -c /etc/taler/taler.conf &
+        taler-exchange-aggregator -c /etc/taler/taler.conf &
+        taler-exchange-transfer -c /etc/taler/taler.conf &
+        
+        echo '=== Starting Exchange HTTPD ==='
+        exec taler-exchange-httpd -c /etc/taler/taler.conf
     networks:
       - taler-network
 
@@ -24,55 +134,51 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # Ports defined in override file per-instance
+      taler-exchange:
+        condition: service_started
+    ports:
+      - "9966"
+    environment:
+      - TALER_CONFIG=/etc/taler/taler.conf
     volumes:
       - ./merchant-demo.conf:/etc/taler/taler.conf:ro
       - merchant_data:/var/lib/taler-merchant
-    environment:
-      - TALER_CONFIG=/etc/taler/taler.conf
-    networks:
-      - taler-network
+      - ./init-merchant.sh:/tmp/init-merchant.sh:ro
     command:
       - /bin/bash
       - -c
       - |
-        echo '=== Setting up Taler Merchant Backend (Demo Mode) ==='
+        echo '=== Setting up Taler Merchant Backend ==='
         
         until pg_isready -h postgres -U taler; do
           echo 'Waiting for PostgreSQL...'
           sleep 2
         done
         
-        PGPASSWORD=talerpassword psql -h postgres -U taler -tc "SELECT 1 FROM pg_database WHERE datname = 'taler_merchant'" | grep -q 1 || 
-          PGPASSWORD=talerpassword psql -h postgres -U taler -c "CREATE DATABASE taler_merchant;"
-        
         echo 'Initializing merchant database...'
         taler-merchant-dbinit -c /etc/taler/taler.conf 2>&1 || true
         
-        echo 'Creating/Updating admin instance with password...'
-        # Use taler-merchant-passwd to create admin instance and set password
-        # This tool properly handles password hashing and instance creation
+        echo 'Creating/Updating admin instance...'
         TALER_MERCHANT_PASSWORD=adminpassword taler-merchant-passwd \
           -c /etc/taler/taler.conf \
           --instance=admin 2>&1 || {
             echo 'INFO: taler-merchant-passwd returned non-zero (may be OK if admin exists)'
           }
         
-        # Verify admin exists
-        ADMIN_CHECK=$$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -tc "SELECT merchant_id FROM merchant.merchant_instances WHERE merchant_id = 'admin'" 2>/dev/null | xargs)
-        if [ "$$ADMIN_CHECK" = 'admin' ]; then
-          echo 'OK: Admin instance verified'
-        else
-          echo 'WARNING: Admin instance not found after setup!'
-        fi
+        # Wait for exchange to be ready
+        echo 'Waiting for exchange to be ready...'
+        for i in {1..60}; do
+          if curl -sf http://taler-exchange:8081/keys >/dev/null 2>&1; then
+            echo 'Exchange is ready'
+            break
+          fi
+          echo "Waiting for exchange... ($$i/60)"
+          sleep 2
+        done
         
-        echo 'Fetching exchange keys from demo exchange...'
-        curl -s https://exchange.demo.taler.net/keys > /tmp/exchange_keys.json 2>/dev/null || true
-        if [ -s /tmp/exchange_keys.json ]; then
-          echo 'Demo exchange keys retrieved successfully!'
-        else
-          echo 'WARNING: Could not fetch demo exchange keys'
-        fi
+        # Run merchant initialization (configure local exchange)
+        echo 'Running merchant initialization...'
+        bash /tmp/init-merchant.sh || echo 'Merchant init completed with warnings'
         
         echo '=== Starting Merchant Services ==='
         taler-merchant-wirewatch -c /etc/taler/taler.conf &
@@ -83,11 +189,14 @@ services:
         echo 'Merchant Web UI: http://localhost:9966/webui/'
         echo 'Login: admin / adminpassword'
         exec taler-merchant-httpd -c /etc/taler/taler.conf
+    networks:
+      - taler-network
 
   demo-frontend:
     image: nginx:alpine
     container_name: taler-demo-frontend
-    # Ports defined in override file per-instance
+    ports:
+      - "80"
     volumes:
       - ./demo-frontend:/usr/share/nginx/html:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
@@ -99,6 +208,8 @@ services:
 volumes:
   postgres_data:
   merchant_data:
+  exchange_data:
+  libeufin_data:
 
 networks:
   taler-network:
