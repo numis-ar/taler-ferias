@@ -350,32 +350,28 @@ sudo ufw allow "${FRONTEND_PORT}/tcp" 2>/dev/null || true
 echo "Starting Taler services..."
 $COMPOSE_CMD up -d
 
-# Wait for services to be healthy
+# Wait for services to be healthy and admin to be created
 echo "Waiting for services to start..."
 sleep 5
 
-# Ensure admin instance is created using taler-merchant-passwd
-echo "Ensuring admin instance is properly configured..."
-docker exec taler-merchant-${SUBDOMAIN} bash -c '
-  # Wait for merchant to be ready
-  for i in {1..30}; do
-    if pg_isready -h postgres -U taler >/dev/null 2>&1; then
-      break
+# Verify admin instance was created (docker-compose.yml now handles this via taler-merchant-passwd)
+echo "Verifying admin instance..."
+for i in {1..30}; do
+    ADMIN_CHECK=$(docker exec taler-postgres-${SUBDOMAIN} psql -U taler -d taler_merchant -tc "SELECT merchant_id FROM merchant.merchant_instances WHERE merchant_id = 'admin'" 2>/dev/null | xargs)
+    if [ "$ADMIN_CHECK" = "admin" ]; then
+        echo "✓ Admin instance verified"
+        break
     fi
-    sleep 1
-  done
-  
-  # Check if admin exists
-  ADMIN_EXISTS=$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -tc "SELECT 1 FROM merchant.merchant_instances WHERE merchant_id = '"'"'admin'"'"'" 2>/dev/null | grep -q 1 && echo "yes" || echo "no")
-  
-  if [ "$ADMIN_EXISTS" = "no" ]; then
-    echo "Creating admin instance using taler-merchant-passwd..."
-    TALER_MERCHANT_PASSWORD=adminpassword taler-merchant-passwd -c /etc/taler/taler.conf --instance=admin
-  else
-    echo "Admin instance already exists, updating password..."
-    TALER_MERCHANT_PASSWORD=adminpassword taler-merchant-passwd -c /etc/taler/taler.conf --instance=admin
-  fi
-' 2>&1 || echo "Note: taler-merchant-passwd may have warnings if service is starting"
+    echo "  Waiting for admin instance... ($i/30)"
+    sleep 2
+done
+
+# If admin doesn't exist after waiting, create it manually
+if [ "$ADMIN_CHECK" != "admin" ]; then
+    echo "Creating admin instance manually..."
+    docker exec taler-merchant-${SUBDOMAIN} bash -c \
+        'TALER_MERCHANT_PASSWORD=adminpassword taler-merchant-passwd -c /etc/taler/taler.conf --instance=admin' 2>&1
+fi
 
 # Check if services are running
 if $COMPOSE_CMD ps | grep -q "Up"; then
