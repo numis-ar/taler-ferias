@@ -160,6 +160,7 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Authorization \$http_authorization;
         proxy_redirect http://localhost:${MERCHANT_PORT}/webui/ /webui/;
         proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
     }
@@ -221,6 +222,7 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Authorization \$http_authorization;
         proxy_redirect http://localhost:${MERCHANT_PORT}/webui/ /webui/;
         proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
     }
@@ -231,6 +233,7 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Authorization \$http_authorization;
         proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
     }
 
@@ -240,6 +243,7 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Authorization \$http_authorization;
         proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
     }
 }
@@ -297,6 +301,7 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Authorization \$http_authorization;
         proxy_redirect http://localhost:${MERCHANT_PORT}/webui/ /webui/;
         proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
     }
@@ -307,6 +312,7 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Authorization \$http_authorization;
         proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
     }
 
@@ -316,6 +322,7 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Authorization \$http_authorization;
         proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
     }
 }
