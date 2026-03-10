@@ -1,21 +1,33 @@
 #!/bin/bash
 # install-taler.sh - Install Taler payment system on a subdomain
-# Usage: ./install-taler.sh <subdomain>
-# Example: ./install-taler.sh shop  → creates shop.whatever.net
+# Usage: ./install-taler.sh <subdomain.domain.tld>
+# Example: ./install-taler.sh shop.whatever.net      → creates 'shop' under 'whatever.net'
+# Example: ./install-taler.sh myname.test.whatever.org → creates 'myname' under 'test.whatever.org'
 
 set -e
 
-SUBDOMAIN=$1
-DOMAIN="whatever.net"
-FULL_DOMAIN="${SUBDOMAIN}.${DOMAIN}"
+FULL_DOMAIN=$1
 
-if [ -z "$SUBDOMAIN" ]; then
-    echo "Usage: ./install-taler.sh <subdomain>"
-    echo "Example: ./install-taler.sh shop  → creates shop.whatever.net"
+if [ -z "$FULL_DOMAIN" ]; then
+    echo "Usage: ./install-taler.sh <subdomain.domain.tld>"
+    echo "Example: ./install-taler.sh shop.whatever.net"
+    echo "Example: ./install-taler.sh myname.test.whatever.org"
+    exit 1
+fi
+
+# Extract subdomain (first part) and domain (rest)
+# e.g., "myname.test.whatever.org" → SUBDOMAIN="myname", DOMAIN="test.whatever.org"
+SUBDOMAIN=$(echo "$FULL_DOMAIN" | cut -d'.' -f1)
+DOMAIN=$(echo "$FULL_DOMAIN" | cut -d'.' -f2-)
+
+if [ -z "$SUBDOMAIN" ] || [ -z "$DOMAIN" ]; then
+    echo "Error: Invalid domain format. Use: subdomain.domain.tld"
     exit 1
 fi
 
 echo "=== Installing Taler on ${FULL_DOMAIN} ==="
+echo "Subdomain: ${SUBDOMAIN}"
+echo "Domain: ${DOMAIN}"
 
 # Check prerequisites
 command -v docker >/dev/null 2>&1 || { echo "Docker required but not installed. Aborting."; exit 1; }
