@@ -67,6 +67,10 @@ sed -i 's|href="http://localhost:9966/webui/"|href="https://${FULL_DOMAIN}/webui
 
 # 5. Create nginx config for subdomain
 echo "Creating nginx configuration..."
+
+# Check if SSL certificate will exist
+SSL_CERT_PATH="/etc/letsencrypt/live/${FULL_DOMAIN}/fullchain.pem"
+
 sudo tee "/etc/nginx/sites-available/taler-${SUBDOMAIN}" << EOF
 server {
     listen 80;
@@ -82,11 +86,13 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name ${FULL_DOMAIN};
 
-    ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    ssl_certificate ${SSL_CERT_PATH};
+    ssl_certificate_key /etc/letsencrypt/live/${FULL_DOMAIN}/privkey.pem;
 
     # Modern SSL configuration
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -144,13 +150,130 @@ sudo nginx -t && sudo systemctl reload nginx
 
 # 6. Get SSL certificate for subdomain
 echo "Obtaining SSL certificate for ${FULL_DOMAIN}..."
-if ! sudo certbot certificates | grep -q "${FULL_DOMAIN}"; then
-    sudo certbot certonly --nginx -d "${FULL_DOMAIN}" --non-interactive --agree-tos -m "admin@${DOMAIN}" || {
-        echo "SSL certificate creation failed. Make sure DNS for ${FULL_DOMAIN} points to this server."
-        exit 1
+
+# Create webroot for certbot
+sudo mkdir -p /var/www/certbot
+
+# First, temporarily use HTTP-only config to allow certbot challenge
+sudo rm -f "/etc/nginx/sites-enabled/taler-${SUBDOMAIN}"
+
+sudo tee "/etc/nginx/sites-available/taler-${SUBDOMAIN}-temp" << EOF
+server {
+    listen 80;
+    server_name ${FULL_DOMAIN};
+    
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
     }
+
+    location / {
+        proxy_pass http://localhost:${FRONTEND_PORT};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location /webui/ {
+        proxy_pass http://localhost:${MERCHANT_PORT}/webui/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location /private/ {
+        proxy_pass http://localhost:${MERCHANT_PORT}/private/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location /config {
+        proxy_pass http://localhost:${MERCHANT_PORT}/config;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+EOF
+
+sudo ln -sf "/etc/nginx/sites-available/taler-${SUBDOMAIN}-temp" "/etc/nginx/sites-enabled/"
+sudo nginx -t && sudo systemctl reload nginx
+
+# Get certificate using webroot method
+SSL_SUCCESS=false
+if ! sudo certbot certificates 2>/dev/null | grep -q "${FULL_DOMAIN}"; then
+    echo "Requesting new SSL certificate for ${FULL_DOMAIN}..."
+    if sudo certbot certonly --webroot -w /var/www/certbot -d "${FULL_DOMAIN}" --non-interactive --agree-tos -m "admin@${DOMAIN}" 2>/dev/null; then
+        SSL_SUCCESS=true
+        echo "SSL certificate obtained successfully!"
+    else
+        echo "WARNING: SSL certificate creation failed."
+        echo "Make sure DNS for ${FULL_DOMAIN} points to this server."
+        echo "Continuing with HTTP-only setup..."
+    fi
 else
     echo "SSL certificate for ${FULL_DOMAIN} already exists."
+    SSL_SUCCESS=true
+fi
+
+# Remove temp config
+sudo rm -f "/etc/nginx/sites-enabled/taler-${SUBDOMAIN}-temp"
+sudo rm -f "/etc/nginx/sites-available/taler-${SUBDOMAIN}-temp"
+
+# Enable the appropriate config
+if [ "$SSL_SUCCESS" = true ] && [ -f "$SSL_CERT_PATH" ]; then
+    echo "Enabling HTTPS configuration..."
+    sudo ln -sf "/etc/nginx/sites-available/taler-${SUBDOMAIN}" "/etc/nginx/sites-enabled/"
+    sudo nginx -t && sudo systemctl reload nginx
+    BASE_URL="https://${FULL_DOMAIN}"
+else
+    echo "Enabling HTTP-only configuration..."
+    # Create HTTP-only config permanently
+    sudo tee "/etc/nginx/sites-available/taler-${SUBDOMAIN}" << EOF
+server {
+    listen 80;
+    server_name ${FULL_DOMAIN};
+    
+    location / {
+        proxy_pass http://localhost:${FRONTEND_PORT};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location /webui/ {
+        proxy_pass http://localhost:${MERCHANT_PORT}/webui/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location /private/ {
+        proxy_pass http://localhost:${MERCHANT_PORT}/private/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location /config {
+        proxy_pass http://localhost:${MERCHANT_PORT}/config;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+EOF
+    sudo ln -sf "/etc/nginx/sites-available/taler-${SUBDOMAIN}" "/etc/nginx/sites-enabled/"
+    sudo nginx -t && sudo systemctl reload nginx
+    BASE_URL="http://${FULL_DOMAIN}"
 fi
 
 # 7. Open firewall ports
@@ -173,8 +296,8 @@ if $COMPOSE_CMD ps | grep -q "Up"; then
     echo "=== Installation Complete! ==="
     echo "========================================"
     echo ""
-    echo "Demo Store:    https://${FULL_DOMAIN}"
-    echo "Merchant UI:   https://${FULL_DOMAIN}/webui/"
+    echo "Demo Store:    ${BASE_URL}"
+    echo "Merchant UI:   ${BASE_URL}/webui/"
     echo ""
     echo "Login:         admin"
     echo "Password:      adminpassword"
@@ -188,5 +311,6 @@ if $COMPOSE_CMD ps | grep -q "Up"; then
     echo ""
 else
     echo "ERROR: Services failed to start. Check logs with: cd ${INSTALL_DIR} && $COMPOSE_CMD logs"
+    exit 1
     exit 1
 fi
