@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
 Taler Fakebank - Simple bank simulator for Taler testing
-Provides Flask-based API matching Taler wire gateway expectations
+Provides Flask-based API and Web UI
 """
 
 import os
 import sys
 import json
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template_string
 
 app = Flask(__name__)
 
@@ -24,6 +24,182 @@ accounts = {
 
 transactions = []
 
+# HTML Template for the web UI
+HTML_TEMPLATE = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Taler Fakebank</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .header h1 { margin: 0 0 10px 0; font-size: 2em; }
+        .header p { margin: 0; opacity: 0.9; }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .card h2 {
+            margin: 0 0 20px 0;
+            color: #333;
+            font-size: 1.3em;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        th {
+            color: #666;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.85em;
+            letter-spacing: 0.5px;
+        }
+        tr:hover { background: #f8f9fa; }
+        .balance {
+            font-weight: 600;
+            color: #28a745;
+            font-family: monospace;
+            font-size: 1.1em;
+        }
+        .account-name {
+            color: #333;
+            font-weight: 500;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+        .badge-exchange { background: #e3f2fd; color: #1976d2; }
+        .badge-merchant { background: #f3e5f5; color: #7b1fa2; }
+        .badge-demo { background: #e8f5e9; color: #388e3c; }
+        .badge-admin { background: #fff3e0; color: #f57c00; }
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        .info-box h3 { margin: 0 0 10px 0; color: #1976d2; }
+        .info-box code {
+            background: rgba(0,0,0,0.05);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .info-box ul { margin: 10px 0; padding-left: 20px; }
+        .info-box li { margin: 5px 0; }
+        .transaction {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .transaction:last-child { border-bottom: none; }
+        .tx-from { color: #666; }
+        .tx-to { color: #666; }
+        .tx-amount {
+            font-weight: 600;
+            color: #28a745;
+            font-family: monospace;
+        }
+        .no-tx {
+            color: #999;
+            text-align: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏦 Taler Fakebank</h1>
+        <p>Demo Banking System for Taler Payments</p>
+    </div>
+    
+    <div class="card">
+        <h2>💳 Accounts</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Account</th>
+                    <th>Type</th>
+                    <th>Balance</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for username, account in accounts.items() %}
+                <tr>
+                    <td>
+                        <span class="account-name">{{ account.name }}</span><br>
+                        <small style="color: #999;">@{{ username }}</small>
+                    </td>
+                    <td>
+                        <span class="badge badge-{{ username }}">{{ username }}</span>
+                    </td>
+                    <td class="balance">{{ "%.2f"|format(account.balance) }} {{ currency }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="card">
+        <h2>📋 Recent Transactions</h2>
+        {% if transactions %}
+            {% for tx in transactions %}
+            <div class="transaction">
+                <span class="tx-from">{{ tx.from }} → {{ tx.to }}</span>
+                <span class="tx-amount">{{ "%.2f"|format(tx.amount) }} {{ currency }}</span>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="no-tx">No transactions yet</div>
+        {% endif %}
+    </div>
+    
+    <div class="info-box">
+        <h3>ℹ️ About</h3>
+        <p>This is a <strong>fake bank</strong> for testing Taler payments.</p>
+        <ul>
+            <li><strong>Exchange</strong> account holds reserves for coin issuance</li>
+            <li><strong>Merchant</strong> account receives payments from customers</li>
+            <li><strong>Demo</strong> account is for testing customer operations</li>
+        </ul>
+        <p><strong>API Endpoint:</strong> <code>/accounts</code>, <code>/accounts/{username}/balance</code></p>
+    </div>
+</body>
+</html>
+'''
+
 @app.route('/healthz')
 def health():
     """Health check endpoint"""
@@ -31,40 +207,46 @@ def health():
 
 @app.route('/')
 def index():
-    """Root endpoint"""
+    """Root endpoint - returns HTML UI or JSON based on Accept header"""
+    # Check if browser wants HTML
+    accept = request.headers.get('Accept', '')
+    if 'text/html' in accept or request.args.get('format') == 'html':
+        return render_template_string(HTML_TEMPLATE, 
+                                      accounts=accounts, 
+                                      transactions=transactions[-10:],  # Last 10
+                                      currency=CURRENCY)
+    # Default to JSON API
     return jsonify({
         'name': 'Taler Fakebank',
         'currency': CURRENCY,
         'version': '1.0',
-        'accounts': list(accounts.keys())
+        'accounts': list(accounts.keys()),
+        'ui_url': request.url_root + '?format=html'
     })
+
+@app.route('/ui')
+def ui():
+    """Explicit UI endpoint"""
+    return render_template_string(HTML_TEMPLATE, 
+                                  accounts=accounts, 
+                                  transactions=transactions[-10:],
+                                  currency=CURRENCY)
 
 @app.route('/accounts', methods=['GET'])
 def list_accounts():
     """List all accounts"""
+    accept = request.headers.get('Accept', '')
+    if 'text/html' in accept:
+        return render_template_string(HTML_TEMPLATE,
+                                      accounts=accounts,
+                                      transactions=transactions[-10:],
+                                      currency=CURRENCY)
     return jsonify({
         'accounts': [
             {'username': k, 'name': v['name'], 'balance': v['balance']}
             for k, v in accounts.items()
         ]
     })
-
-@app.route('/accounts', methods=['POST'])
-def create_account():
-    """Create a new account"""
-    data = request.get_json() or {}
-    username = data.get('username')
-    if not username:
-        return jsonify({'error': 'Username required'}), 400
-    if username in accounts:
-        return jsonify({'error': 'Account exists'}), 409
-    
-    accounts[username] = {
-        'password': data.get('password', 'password'),
-        'balance': 0.00,
-        'name': data.get('name', username)
-    }
-    return jsonify({'status': 'created', 'username': username}), 201
 
 @app.route('/accounts/<username>/balance', methods=['GET'])
 def get_balance(username):
@@ -82,7 +264,7 @@ def get_transactions(username):
     """Get account transactions"""
     if username not in accounts:
         return jsonify({'error': 'Account not found'}), 404
-    user_txns = [t for t in transactions if t['from'] == username or t['to'] == username]
+    user_txns = [t for t in transactions if t.get('from') == username or t.get('to') == username]
     return jsonify({'transactions': user_txns})
 
 @app.route('/accounts/<username>/transactions', methods=['POST'])
@@ -163,4 +345,5 @@ def add_incoming():
 if __name__ == '__main__':
     print(f"Starting Taler Fakebank on port {BANK_PORT}")
     print(f"Accounts: {list(accounts.keys())}")
+    print(f"Web UI: http://localhost:{BANK_PORT}/")
     app.run(host='0.0.0.0', port=BANK_PORT, threaded=True)
