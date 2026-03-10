@@ -1,101 +1,166 @@
 #!/usr/bin/env python3
 """
-Minimal fake bank for Taler testing
-Implements the Taler Wire Gateway API
+Taler Fakebank - Simple bank simulator for Taler testing
+Provides Flask-based API matching Taler wire gateway expectations
 """
 
-import http.server
-import socketserver
+import os
+import sys
 import json
-import urllib.parse
+from flask import Flask, request, jsonify
 
-PORT = 8082
+app = Flask(__name__)
 
-class FakeBankHandler(http.server.BaseHTTPRequestHandler):
-    accounts = {
-        "admin": {"balance": "1000.00", "currency": "KUDOS"}
+BANK_PORT = int(os.environ.get('BANK_PORT', 8082))
+CURRENCY = os.environ.get('BANK_CURRENCY', 'KUDOS')
+
+# Simple in-memory account storage
+accounts = {
+    'admin': {'password': 'bankadmin', 'balance': 1000000.00, 'name': 'Bank Admin'},
+    'exchange': {'password': 'exchange_password', 'balance': 100000.00, 'name': 'Taler Exchange'},
+    'merchant': {'password': 'merchant_password', 'balance': 0.00, 'name': 'Taler Merchant'},
+    'demo': {'password': 'demo_password', 'balance': 500.00, 'name': 'Demo User'}
+}
+
+transactions = []
+
+@app.route('/healthz')
+def health():
+    """Health check endpoint"""
+    return jsonify({'status': 'healthy'})
+
+@app.route('/')
+def index():
+    """Root endpoint"""
+    return jsonify({
+        'name': 'Taler Fakebank',
+        'currency': CURRENCY,
+        'version': '1.0',
+        'accounts': list(accounts.keys())
+    })
+
+@app.route('/accounts', methods=['GET'])
+def list_accounts():
+    """List all accounts"""
+    return jsonify({
+        'accounts': [
+            {'username': k, 'name': v['name'], 'balance': v['balance']}
+            for k, v in accounts.items()
+        ]
+    })
+
+@app.route('/accounts', methods=['POST'])
+def create_account():
+    """Create a new account"""
+    data = request.get_json() or {}
+    username = data.get('username')
+    if not username:
+        return jsonify({'error': 'Username required'}), 400
+    if username in accounts:
+        return jsonify({'error': 'Account exists'}), 409
+    
+    accounts[username] = {
+        'password': data.get('password', 'password'),
+        'balance': 0.00,
+        'name': data.get('name', username)
     }
-    transfers = []
+    return jsonify({'status': 'created', 'username': username}), 201
+
+@app.route('/accounts/<username>/balance', methods=['GET'])
+def get_balance(username):
+    """Get account balance"""
+    if username not in accounts:
+        return jsonify({'error': 'Account not found'}), 404
+    return jsonify({
+        'username': username,
+        'balance': accounts[username]['balance'],
+        'currency': CURRENCY
+    })
+
+@app.route('/accounts/<username>/transactions', methods=['GET'])
+def get_transactions(username):
+    """Get account transactions"""
+    if username not in accounts:
+        return jsonify({'error': 'Account not found'}), 404
+    user_txns = [t for t in transactions if t['from'] == username or t['to'] == username]
+    return jsonify({'transactions': user_txns})
+
+@app.route('/accounts/<username>/transactions', methods=['POST'])
+def create_transaction(username):
+    """Create a transaction"""
+    if username not in accounts:
+        return jsonify({'error': 'Account not found'}), 404
     
-    def log_message(self, format, *args):
-        print(f"[FAKEBANK] {format % args}")
+    data = request.get_json() or {}
+    amount = float(data.get('amount', 0))
+    to_account = data.get('to') or data.get('payto_uri', '').split('/')[-1]
+    subject = data.get('subject', '')
     
-    def do_GET(self):
-        """Handle GET requests"""
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
-        
-        if path == "/" or path == "/health":
-            self.send_json({"status": "ok", "bank": "fake", "currency": "KUDOS"})
-        elif path.startswith("/accounts/"):
-            account_id = path.split("/")[2]
-            if account_id in self.accounts:
-                self.send_json(self.accounts[account_id])
-            else:
-                self.send_error(404, "Account not found")
-        else:
-            self.send_error(404, "Not found")
+    if not to_account or to_account not in accounts:
+        return jsonify({'error': 'Invalid destination'}), 400
+    if amount <= 0:
+        return jsonify({'error': 'Invalid amount'}), 400
+    if accounts[username]['balance'] < amount:
+        return jsonify({'error': 'Insufficient funds'}), 400
     
-    def do_POST(self):
-        """Handle POST requests"""
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
-        
-        content_length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else '{}'
-        
-        try:
-            data = json.loads(body) if body else {}
-        except:
-            data = {}
-        
-        if path == "/transfer":
-            # Handle wire transfer request
-            transfer_id = f"transfer_{len(self.transfers)}"
-            self.transfers.append({
-                "id": transfer_id,
-                "amount": data.get("amount", "0"),
-                "wire_transfer_subject": data.get("wire_transfer_subject", ""),
-                "destination": data.get("destination_account", {})
-            })
-            self.send_json({
-                "transfer_id": transfer_id,
-                "timestamp": "2024-01-01T00:00:00Z",
-                "status": "confirmed"
-            })
-        elif path == "/admin/add-incoming":
-            # Add incoming transfer (for testing)
-            account = data.get("account", "admin")
-            amount = data.get("amount", "0")
-            if account in self.accounts:
-                current = float(self.accounts[account]["balance"])
-                self.accounts[account]["balance"] = str(current + float(amount))
-                self.send_json({"status": "ok", "new_balance": self.accounts[account]["balance"]})
-            else:
-                self.send_error(404, "Account not found")
-        else:
-            self.send_error(404, "Not found")
+    # Execute transfer
+    accounts[username]['balance'] -= amount
+    accounts[to_account]['balance'] += amount
     
-    def send_json(self, data):
-        """Send JSON response"""
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
-        self.wfile.write(json.dumps(data).encode())
+    txn = {
+        'id': len(transactions) + 1,
+        'from': username,
+        'to': to_account,
+        'amount': amount,
+        'subject': subject,
+        'currency': CURRENCY
+    }
+    transactions.append(txn)
     
-    def do_OPTIONS(self):
-        """Handle CORS preflight"""
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
+    return jsonify({'status': 'completed', 'transaction': txn}), 201
+
+# Taler-specific endpoints
+@app.route('/taler-bank-integration/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])
+def taler_integration(path):
+    """Handle Taler bank integration API calls"""
+    return jsonify({'status': 'ok', 'path': path})
+
+@app.route('/taler-wire-gateway/<path:path>', methods=['GET', 'POST'])
+def taler_wire_gateway(path):
+    """Taler wire gateway endpoint"""
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        return jsonify({
+            'status': 'confirmed',
+            'row_id': len(transactions) + 1,
+            'timestamp': {'t_s': 0}
+        })
+    return jsonify({'transactions': []})
+
+# Legacy endpoints for compatibility
+@app.route('/transfer', methods=['POST'])
+def transfer():
+    """Legacy transfer endpoint"""
+    data = request.get_json() or {}
+    transfer_id = f"transfer_{len(transactions)}"
+    return jsonify({
+        'transfer_id': transfer_id,
+        'timestamp': '2024-01-01T00:00:00Z',
+        'status': 'confirmed'
+    })
+
+@app.route('/admin/add-incoming', methods=['POST'])
+def add_incoming():
+    """Add incoming funds (for testing)"""
+    data = request.get_json() or {}
+    account = data.get('account', 'admin')
+    amount = float(data.get('amount', 0))
+    if account in accounts:
+        accounts[account]['balance'] += amount
+        return jsonify({'status': 'ok', 'new_balance': accounts[account]['balance']})
+    return jsonify({'error': 'Account not found'}), 404
 
 if __name__ == '__main__':
-    print(f"Starting Fake Bank on port {PORT}")
-    print(f"Test with: curl http://localhost:{PORT}/")
-    
-    with socketserver.TCPServer(("", PORT), FakeBankHandler) as httpd:
-        print(f"Fake Bank running at http://localhost:{PORT}/")
-        httpd.serve_forever()
+    print(f"Starting Taler Fakebank on port {BANK_PORT}")
+    print(f"Accounts: {list(accounts.keys())}")
+    app.run(host='0.0.0.0', port=BANK_PORT, threaded=True)
