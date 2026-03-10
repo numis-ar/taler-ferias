@@ -73,14 +73,14 @@ services:
     volumes:
       - postgres_data_${SUBDOMAIN}:/var/lib/postgresql/data
     
-  libeufin-bank:
-    container_name: taler-bank-${SUBDOMAIN}
+  fakebank:
+    container_name: taler-fakebank-${SUBDOMAIN}
     environment:
-      - LIBEUFIN_BANK_BASE_URL=https://${FULL_DOMAIN}/bank/
+      - BANK_CURRENCY=KUDOS
     ports:
       - "0.0.0.0:${BANK_PORT}:8082"
     volumes:
-      - libeufin_data_${SUBDOMAIN}:/var/lib/libeufin
+      - fakebank_data_${SUBDOMAIN}:/app/data
   
   taler-exchange:
     container_name: taler-exchange-${SUBDOMAIN}
@@ -111,7 +111,7 @@ volumes:
   postgres_data_${SUBDOMAIN}:
   merchant_data_${SUBDOMAIN}:
   exchange_data_${SUBDOMAIN}:
-  libeufin_data_${SUBDOMAIN}:
+  fakebank_data_${SUBDOMAIN}:
 EOFCOMPOSE
 
 # 4. Update configuration files with the full domain
