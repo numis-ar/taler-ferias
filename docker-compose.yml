@@ -58,10 +58,26 @@ services:
         
         if [ "$ADMIN_EXISTS" = 'no' ]; then
           echo 'Creating admin instance...'
-          python3 /tmp/setup_admin.py
-          PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -f /tmp/setup_admin.sql 2>&1
+          python3 /tmp/setup_admin.py && \
+          PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -f /tmp/setup_admin.sql
+          if [ $? -eq 0 ]; then
+            echo 'Admin instance created successfully'
+          else
+            echo 'ERROR: Failed to create admin instance, retrying in 5s...'
+            sleep 5
+            python3 /tmp/setup_admin.py && \
+            PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -f /tmp/setup_admin.sql
+          fi
         else
           echo 'Admin instance already exists'
+        fi
+        
+        # Verify admin exists
+        ADMIN_CHECK=$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -tc "SELECT merchant_id FROM merchant.merchant_instances WHERE merchant_id = 'admin'" 2>/dev/null | xargs)
+        if [ "$ADMIN_CHECK" = 'admin' ]; then
+          echo '✓ Admin instance verified'
+        else
+          echo 'WARNING: Admin instance not found after setup!'
         fi
         
         echo 'Fetching exchange keys from demo exchange...'
