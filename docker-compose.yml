@@ -6,7 +6,6 @@ services:
       POSTGRES_USER: taler
       POSTGRES_PASSWORD: talerpassword
       POSTGRES_DB: taler
-      POSTGRES_MULTIPLE_DATABASES: taler_merchant,taler_exchange,libeufin
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
@@ -18,63 +17,22 @@ services:
     networks:
       - taler-network
 
-  libeufin-bank:
-    image: libeufin/bank:latest
-    container_name: taler-bank
-    depends_on:
-      postgres:
-        condition: service_healthy
+  # Taler Fakebank - Simple bank simulator for testing
+  fakebank:
+    build:
+      context: .
+      dockerfile: Dockerfile.fakebank
+    container_name: taler-fakebank
     ports:
       - "8082"
     environment:
-      LIBEUFIN_BANK_DB_CONNECTION: jdbc:postgresql://postgres:5432/libeufin?user=taler&password=talerpassword
-      LIBEUFIN_BANK_ADMIN_LOGIN: admin
-      LIBEUFIN_BANK_ADMIN_PASSWORD: bankadmin
-      LIBEUFIN_BANK_HOST: 0.0.0.0
-      LIBEUFIN_BANK_PORT: 8082
-      LIBEUFIN_BANK_BASE_URL: https://${FULL_DOMAIN}/bank/
-      LIBEUFIN_BANK_TOP_SECRET: ${BANK_TOP_SECRET:-change-this-in-production}
+      - BANK_PORT=8082
+      - BANK_CURRENCY=KUDOS
+      - BANK_EXCHANGE_ACCOUNT=exchange
+      - BANK_EXCHANGE_PASSWORD=exchange_password
     volumes:
-      - libeufin_data:/var/lib/libeufin
-      - ./init-bank.sh:/tmp/init-bank.sh:ro
-    command:
-      - /bin/bash
-      - -c
-      - |
-        echo '=== Starting Libeufin Bank ==='
-        
-        # Wait for PostgreSQL
-        until pg_isready -h postgres -U taler; do
-          echo 'Waiting for PostgreSQL...'
-          sleep 2
-        done
-        
-        # Initialize database if needed
-        echo 'Initializing Libeufin Bank database...'
-        libeufin-bank db-init || true
-        
-        # Start the bank service in background
-        echo 'Starting Libeufin Bank service...'
-        libeufin-bank serve &
-        BANK_PID=$$!
-        
-        # Wait for bank to be ready
-        for i in {1..30}; do
-          if curl -sf http://localhost:8082/health >/dev/null 2>&1 || \
-             curl -sf http://localhost:8082/ >/dev/null 2>&1; then
-            echo 'Libeufin Bank is ready'
-            break
-          fi
-          echo "Waiting for bank to start... ($$i/30)"
-          sleep 2
-        done
-        
-        # Run initialization script
-        echo 'Running bank initialization...'
-        bash /tmp/init-bank.sh || echo 'Bank init script completed with warnings'
-        
-        # Keep the bank running
-        wait $$BANK_PID
+      - ./fake-bank.py:/app/fake-bank.py:ro
+    command: python3 /app/fake-bank.py
     networks:
       - taler-network
 
@@ -86,7 +44,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      libeufin-bank:
+      fakebank:
         condition: service_started
     ports:
       - "8081"
@@ -108,8 +66,24 @@ services:
           sleep 2
         done
         
+        # Ensure exchange database exists
+        PGPASSWORD=talerpassword psql -h postgres -U taler -tc "SELECT 1 FROM pg_database WHERE datname = 'taler_exchange'" | grep -q 1 || 
+          PGPASSWORD=talerpassword psql -h postgres -U taler -c "CREATE DATABASE taler_exchange;"
+        
         echo 'Initializing exchange database...'
         taler-exchange-dbinit -c /etc/taler/taler.conf 2>&1 || true
+        
+        # Wait for fakebank to be ready
+        echo 'Waiting for fakebank...'
+        for i in {1..30}; do
+          if curl -sf http://fakebank:8082/healthz >/dev/null 2>&1 || \
+             curl -sf http://fakebank:8082/accounts >/dev/null 2>&1; then
+            echo 'Fakebank is ready'
+            break
+          fi
+          echo "Waiting for fakebank... ($$i/30)"
+          sleep 2
+        done
         
         # Run exchange initialization (key generation, etc)
         echo 'Running exchange initialization...'
@@ -136,10 +110,13 @@ services:
         condition: service_healthy
       taler-exchange:
         condition: service_started
+      fakebank:
+        condition: service_started
     ports:
       - "9966"
     environment:
       - TALER_CONFIG=/etc/taler/taler.conf
+      - EXCHANGE_URL=http://taler-exchange:8081
     volumes:
       - ./merchant-demo.conf:/etc/taler/taler.conf:ro
       - merchant_data:/var/lib/taler-merchant
@@ -154,6 +131,10 @@ services:
           echo 'Waiting for PostgreSQL...'
           sleep 2
         done
+        
+        # Ensure merchant database exists
+        PGPASSWORD=talerpassword psql -h postgres -U taler -tc "SELECT 1 FROM pg_database WHERE datname = 'taler_merchant'" | grep -q 1 || 
+          PGPASSWORD=talerpassword psql -h postgres -U taler -c "CREATE DATABASE taler_merchant;"
         
         echo 'Initializing merchant database...'
         taler-merchant-dbinit -c /etc/taler/taler.conf 2>&1 || true
@@ -209,7 +190,6 @@ volumes:
   postgres_data:
   merchant_data:
   exchange_data:
-  libeufin_data:
 
 networks:
   taler-network:
