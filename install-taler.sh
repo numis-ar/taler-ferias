@@ -229,12 +229,12 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
+        
     }
 
+    # Bank /config for wallet withdrawal (returns taler-corebank)
     location /config {
-        proxy_pass http://localhost:${MERCHANT_PORT}/config;
-        proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
+        proxy_pass http://localhost:${BANK_PORT}/config;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -331,17 +331,18 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header Authorization \$http_authorization;
-        proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
+        
     }
 
+    # Bank /config for wallet withdrawal (returns taler-corebank)
     location /config {
-        proxy_pass http://localhost:${MERCHANT_PORT}/config;
+        proxy_pass http://localhost:${BANK_PORT}/config;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header Authorization \$http_authorization;
-        proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
+        
     }
 
     # Redirect /exchange to /exchange/
@@ -441,17 +442,18 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header Authorization \$http_authorization;
-        proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
+        
     }
 
+    # Bank /config for wallet withdrawal (returns taler-corebank)
     location /config {
-        proxy_pass http://localhost:${MERCHANT_PORT}/config;
+        proxy_pass http://localhost:${BANK_PORT}/config;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header Authorization \$http_authorization;
-        proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
+        
     }
 
     location /exchange/ {
