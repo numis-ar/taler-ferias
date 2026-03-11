@@ -24,18 +24,19 @@ echo "Using config: $CONF_FILE"
 # Replace placeholder with appropriate URL
 # If FULL_DOMAIN is set (from install script), use that for public URL
 # Otherwise use localhost for internal testing
-INTERNAL_CONF="$CONF_FILE"  # For internal operations (download/upload)
 if [ -n "$FULL_DOMAIN" ]; then
     echo "FULL_DOMAIN is set to: $FULL_DOMAIN"
     sed -i "s|https://EXCHANGE_HOST_PLACEHOLDER/exchange/|https://${FULL_DOMAIN}/exchange/|g" "$CONF_FILE"
-    # Create internal config with localhost for download/upload operations
-    INTERNAL_CONF="/tmp/taler-exchange-internal.conf"
-    cp "$CONF_FILE" "$INTERNAL_CONF"
-    sed -i 's|https://[^/]*/exchange/|http://localhost:8081/|g' "$INTERNAL_CONF"
 else
     echo "FULL_DOMAIN not set, using localhost for internal operations"
     sed -i 's|https://EXCHANGE_HOST_PLACEHOLDER/exchange/|http://localhost:8081/|g' "$CONF_FILE"
 fi
+
+# For internal operations, we use localhost:8081
+INTERNAL_CONF="/tmp/taler-exchange-internal.conf"
+cp "$CONF_FILE" "$INTERNAL_CONF"
+sed -i 's|https://[^/]*/exchange/|http://localhost:8081/|g' "$INTERNAL_CONF"
+sed -i 's|BASE_URL = .*|BASE_URL = http://localhost:8081/|g' "$INTERNAL_CONF"
 
 # Check if config exists
 if [ ! -f "$CONF_FILE" ]; then
@@ -79,17 +80,6 @@ fi
 echo "Initializing exchange database schema..."
 taler-exchange-dbinit -c "$CONF_FILE" 2>&1 || echo "DB init may have already been done"
 
-# Add wire account early (before exchange starts)
-echo "Setting up wire account..."
-sleep 2
-PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_exchange <<EOSQL 2>/dev/null || true
--- Check if table exists and insert wire account
-INSERT INTO exchange.wire_accounts (payto_uri, master_sig, is_active, last_alert, debit_restrictions, credit_restrictions)
-VALUES ('payto://x-taler-bank/libeufin-bank/exchange?receiver-name=Exchange', '\x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000', true, 0, '{}'::jsonb, '{}'::jsonb)
-ON CONFLICT (payto_uri) DO UPDATE SET is_active = true;
-EOSQL
-echo "Wire account setup complete"
-
 # Wait for libeufin-bank
 echo "Waiting for libeufin-bank..."
 for i in {1..30}; do
@@ -132,6 +122,10 @@ if ! grep -q "^MASTER_PUBLIC_KEY" "$CONF_FILE"; then
         sed -i '/^[# ]*MASTER_PUBLIC_KEY/d' "$CONF_FILE"
         sed -i '/^# Master public key/d' "$CONF_FILE"
         sed -i '/^\[exchange\]/a MASTER_PUBLIC_KEY = '$MASTER_PUB "$CONF_FILE"
+        # Also update internal conf
+        sed -i '/^[# ]*MASTER_PUBLIC_KEY/d' "$INTERNAL_CONF"
+        sed -i '/^# Master public key/d' "$INTERNAL_CONF"
+        sed -i '/^\[exchange\]/a MASTER_PUBLIC_KEY = '$MASTER_PUB "$INTERNAL_CONF"
     else
         echo "ERROR: Could not determine MASTER_PUBLIC_KEY!"
         exit 1
@@ -151,17 +145,22 @@ taler-exchange-secmod-eddsa -c "$CONF_FILE" &
 
 sleep 3
 
-# Start temporary httpd for upload
+# Start httpd for configuration
 echo "Starting httpd for configuration..."
-taler-exchange-httpd -c "$CONF_FILE" &
+taler-exchange-httpd -c "$INTERNAL_CONF" &
 HTTPD_PID=$!
 
-# Wait for httpd
-echo "Waiting for httpd..."
+# Wait for httpd to be fully ready
+echo "Waiting for httpd to be fully ready..."
 for i in {1..60}; do
-    if curl -sf http://localhost:8081/ >/dev/null 2>&1; then
-        echo "Httpd is ready!"
+    if curl -sf http://localhost:8081/keys >/dev/null 2>&1; then
+        echo "Httpd is ready and serving /keys!"
         break
+    fi
+    if ! kill -0 $HTTPD_PID 2>/dev/null; then
+        echo "Httpd died! Restarting..."
+        taler-exchange-httpd -c "$INTERNAL_CONF" &
+        HTTPD_PID=$!
     fi
     sleep 1
 done
@@ -173,62 +172,100 @@ sleep 5
 echo ""
 echo "=== Configuring Exchange (offline operations) ==="
 
-# Enable wire account and upload
-echo "Enabling wire account..."
-# Use the bank service name for internal communication
+# Bank payto URL
 BANK_PAYTO_URL="payto://x-taler-bank/libeufin-bank/exchange?receiver-name=Exchange"
 echo "Bank payto URL: $BANK_PAYTO_URL"
-taler-exchange-offline -c "$CONF_FILE" enable-account "$BANK_PAYTO_URL" 2>&1 | \
-    taler-exchange-offline -c "$INTERNAL_CONF" upload 2>&1 || echo "Account may already be enabled or failed"
 
-# Set up wire fees and upload
-echo "Setting up wire fees..."
-taler-exchange-offline -c "$CONF_FILE" wire-fee 2024 x-taler-bank KUDOS:0 KUDOS:0 2>&1 | \
-    taler-exchange-offline -c "$INTERNAL_CONF" upload 2>&1 || echo "Wire fee may already be set"
+# Enable wire account - generate signed command and upload
+echo "Enabling wire account..."
+taler-exchange-offline -c "$INTERNAL_CONF" enable-account "$BANK_PAYTO_URL" > /tmp/enable-account.json 2>&1 || {
+    echo "enable-account command failed, output:"
+    cat /tmp/enable-account.json
+}
 
-# Set up global fees and upload
-echo "Setting up global fees..."
-taler-exchange-offline -c "$CONF_FILE" global-fee 2024 KUDOS:0 KUDOS:0 KUDOS:0 1d 1y 100 2>&1 | \
-    taler-exchange-offline -c "$INTERNAL_CONF" upload 2>&1 || echo "Global fee may already be set"
+if [ -s /tmp/enable-account.json ]; then
+    echo "Uploading enable-account command..."
+    taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/enable-account.json 2>&1 || echo "Account upload may have failed or already exists"
+else
+    echo "No enable-account output generated"
+fi
 
-# Verify wire account exists
+# Wait a moment for account to be processed
 sleep 2
+
+# Set up wire fees
+echo "Setting up wire fees..."
+taler-exchange-offline -c "$INTERNAL_CONF" wire-fee 2026 x-taler-bank KUDOS:0.01 KUDOS:0.01 > /tmp/wire-fee.json 2>&1 || {
+    echo "wire-fee command failed, output:"
+    cat /tmp/wire-fee.json
+}
+
+if [ -s /tmp/wire-fee.json ]; then
+    echo "Uploading wire fees..."
+    taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/wire-fee.json 2>&1 || echo "Wire fee upload may have failed or already set"
+else
+    echo "No wire-fee output generated"
+fi
+
+# Set up global fees
+echo "Setting up global fees..."
+taler-exchange-offline -c "$INTERNAL_CONF" global-fee 2026 KUDOS:0.01 KUDOS:0.01 KUDOS:0.01 1d 1y 100 > /tmp/global-fee.json 2>&1 || {
+    echo "global-fee command failed, output:"
+    cat /tmp/global-fee.json
+}
+
+if [ -s /tmp/global-fee.json ]; then
+    echo "Uploading global fees..."
+    taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/global-fee.json 2>&1 || echo "Global fee upload may have failed or already set"
+else
+    echo "No global-fee output generated"
+fi
+
+# Wait for exchange to process everything
+sleep 3
+
+# Check wire accounts
 echo "Checking wire accounts..."
 ACCOUNT_COUNT=$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_exchange -tc "SELECT COUNT(*) FROM exchange.wire_accounts;" 2>/dev/null | xargs || echo "0")
 echo "Wire accounts found: $ACCOUNT_COUNT"
 
-if [ "$ACCOUNT_COUNT" = "0" ]; then
-    echo "WARNING: No wire accounts found. Adding manually..."
-    # Insert wire account directly
-    PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_exchange <<EOSQL 2>/dev/null || true
-INSERT INTO exchange.wire_accounts (payto_uri, master_sig, is_active, last_alert)
-VALUES ('payto://x-taler-bank/libeufin-bank/exchange?receiver-name=Exchange', '\\x0000', true, 0)
-ON CONFLICT DO NOTHING;
-EOSQL
-fi
-
-# Wait a bit for exchange to generate keys
-sleep 5
-
-# Download keys from exchange, sign them, and upload
-echo "Downloading keys from exchange..."
-# Run download (uses internal config with localhost) and capture output
-taler-exchange-offline -c "$INTERNAL_CONF" download > /tmp/keys.json 2>/dev/null || true
-
-# Check if we got valid JSON (contains future_denoms or exchange-input-keys)
-if head -10 /tmp/keys.json 2>/dev/null | grep -q 'exchange-input-keys\|future_denoms'; then
-    echo "Got keys, signing..."
-    taler-exchange-offline -c "$INTERNAL_CONF" sign < /tmp/keys.json > /tmp/signed.json 2>/dev/null || true
-    
-    if [ -s /tmp/signed.json ]; then
-        echo "Uploading signed keys..."
-        taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/signed.json 2>&1 || echo "Upload may have warnings"
-        echo "Keys signed and uploaded successfully!"
-    else
-        echo "No keys to sign (this is normal for initial setup)"
+# Check if /keys is working
+echo "Checking /keys endpoint..."
+if curl -sf http://localhost:8081/keys > /tmp/exchange-keys.json 2>/dev/null; then
+    echo "/keys endpoint is working!"
+    if [ -s /tmp/exchange-keys.json ]; then
+        echo "Keys response size: $(wc -c < /tmp/exchange-keys.json) bytes"
+        # Try to extract master key for verification
+        MASTER_KEY_CHECK=$(cat /tmp/exchange-keys.json | python3 -c 'import sys,json; print(json.load(sys.stdin).get("master_public_key",""))' 2>/dev/null || echo "")
+        if [ -n "$MASTER_KEY_CHECK" ]; then
+            echo "Exchange master key: $MASTER_KEY_CHECK"
+        fi
     fi
 else
-    echo "No keys downloaded yet (this is normal for initial setup)"
+    echo "WARNING: /keys endpoint not responding yet"
+fi
+
+# Download current keys, sign them, and upload
+echo "Downloading keys from exchange..."
+taler-exchange-offline -c "$INTERNAL_CONF" download > /tmp/keys-downloaded.json 2>&1 || {
+    echo "Download failed, output:"
+    cat /tmp/keys-downloaded.json
+}
+
+if [ -s /tmp/keys-downloaded.json ] && head -10 /tmp/keys-downloaded.json 2>/dev/null | grep -q 'exchange-input-keys\|future_denoms'; then
+    echo "Got keys, signing..."
+    taler-exchange-offline -c "$INTERNAL_CONF" sign < /tmp/keys-downloaded.json > /tmp/keys-signed.json 2>&1 || {
+        echo "Sign failed, output:"
+        cat /tmp/keys-signed.json
+    }
+    
+    if [ -s /tmp/keys-signed.json ]; then
+        echo "Uploading signed keys..."
+        taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/keys-signed.json 2>&1 || echo "Key upload may have warnings"
+        echo "Keys signed and uploaded!"
+    fi
+else
+    echo "No valid keys to download yet (may need denominations configured)"
 fi
 
 # Kill temporary httpd
