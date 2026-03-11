@@ -244,6 +244,15 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
+    # Merchant /config for payments (returns taler-merchant)
+    location /merchant/config {
+        proxy_pass http://localhost:${MERCHANT_PORT}/config;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
     # Taler Exchange
     # Redirect /exchange to /exchange/
     location = /exchange {
@@ -345,6 +354,16 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header Authorization \$http_authorization;
+
+    # Merchant /config for payments (returns taler-merchant)
+    location /merchant/config {
+        proxy_pass http://localhost:${MERCHANT_PORT}/config;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Authorization \$http_authorization;
+    }
         
     }
 
@@ -446,6 +465,16 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_set_header Authorization \$http_authorization;
         
+
+    # Merchant /config for payments (returns taler-merchant)
+    location /merchant/config {
+        proxy_pass http://localhost:${MERCHANT_PORT}/config;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Authorization \$http_authorization;
+    }
     }
 
     # Bank /config for wallet withdrawal (returns taler-corebank)
