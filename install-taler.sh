@@ -158,11 +158,11 @@ BASE_URL = https://${FULL_DOMAIN}/merchant/
 CONFIG = postgres://taler:talerpassword@postgres:5432/taler_merchant
 
 # Use the local exchange (internal Docker network)
-# Note: MASTER_KEY will be auto-populated by init-merchant.sh
+# Note: MASTER_KEY will be added by init-merchant.sh after exchange is ready
 [merchant-exchange-kudos]
 EXCHANGE_BASE_URL = http://taler-exchange:8081/
 CURRENCY = KUDOS
-MASTER_KEY = PLACEHOLDER_WILL_BE_UPDATED
+# MASTER_KEY will be set below after exchange starts
 EOF
 
 # Update Merchant Web UI links
@@ -572,6 +572,24 @@ $COMPOSE_CMD up -d
 # Wait for services to be healthy and admin to be created
 echo "Waiting for services to start..."
 sleep 5
+
+# Update merchant config with exchange master key
+echo "Fetching exchange master key for merchant config..."
+for i in {1..60}; do
+    EXCHANGE_MASTER_KEY=$(curl -sf http://localhost:${EXCHANGE_PORT}/keys 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin).get("master_public_key",""))' || echo "")
+    if [ -n "$EXCHANGE_MASTER_KEY" ] && [ "$EXCHANGE_MASTER_KEY" != "null" ]; then
+        echo "Got exchange master key: ${EXCHANGE_MASTER_KEY:0:20}..."
+        # Update merchant config file
+        sed -i "s/# MASTER_KEY will be set below after exchange starts/MASTER_KEY = ${EXCHANGE_MASTER_KEY}/g" merchant-${SUBDOMAIN}.conf
+        # Restart merchant to pick up new config
+        echo "Restarting merchant to apply master key..."
+        docker restart taler-merchant-${SUBDOMAIN} || true
+        sleep 3
+        break
+    fi
+    echo "  Waiting for exchange master key... ($i/60)"
+    sleep 2
+done
 
 # Verify admin instance was created (docker-compose.yml now handles this via taler-merchant-passwd)
 echo "Verifying admin instance..."
