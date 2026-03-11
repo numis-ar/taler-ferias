@@ -77,19 +77,24 @@ else
 fi
 
 # Generate denomination keys
-echo "Generating denomination keys..."
+echo "Setting up wire fees..."
 taler-exchange-offline -c "$CONF_FILE" wire-fees 2024 KUDOS 0 0 0 2>&1 || true
 
-# Generate and sign denominations
-echo "Generating future denominations..."
-taler-exchange-offline -c "$CONF_FILE" future-denominations 2>&1 || {
-    echo "Note: future-denominations may have warnings"
+# Sign any configured denominations
+echo "Signing denomination keys..."
+taler-exchange-offline -c "$CONF_FILE" sign 2>&1 || {
+    echo "Note: sign may have warnings if no denominations ready"
 }
 
-echo "Signing denominations..."
-taler-exchange-offline -c "$CONF_FILE" sign 2>&1 || {
-    echo "Note: sign may have warnings if denominations not ready"
-}
+# Try to publish key information if taler-exchange-keyup exists
+if which taler-exchange-keyup >/dev/null 2>&1; then
+    echo "Publishing exchange keys..."
+    taler-exchange-keyup -c "$CONF_FILE" 2>&1 || echo "keyup may need httpd to be running first"
+fi
+
+# Show available extensions
+echo "Exchange extensions:"
+taler-exchange-offline -c "$CONF_FILE" extensions 2>&1 || true
 
 # Show status
 echo ""
