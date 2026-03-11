@@ -158,9 +158,13 @@ BASE_URL = https://${FULL_DOMAIN}/merchant/
 CONFIG = postgres://taler:talerpassword@postgres:5432/taler_merchant
 
 # Use the local exchange (internal Docker network)
+# Note: MASTER_KEY will be auto-populated by init-merchant.sh
 [merchant-exchange-kudos]
 EXCHANGE_BASE_URL = http://taler-exchange:8081/
 CURRENCY = KUDOS
+EOF
+
+MASTER_KEY = PLACEHOLDER_WILL_BE_UPDATED
 EOF
 
 # Update Merchant Web UI links

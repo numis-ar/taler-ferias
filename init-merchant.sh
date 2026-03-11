@@ -33,6 +33,12 @@ fi
 
 echo "Exchange Master Key: $MASTER_KEY"
 
+# Update config file with master key if it's valid
+if [ -n "$MASTER_KEY" ] && [ "$MASTER_KEY" != "null" ] && [ "$MASTER_KEY" != "PLACEHOLDER_KEY" ]; then
+    echo "Updating merchant config with master key..."
+    sed -i "s/MASTER_KEY = PLACEHOLDER_WILL_BE_UPDATED/MASTER_KEY = \"$MASTER_KEY\"/g" /etc/taler/taler.conf 2>/dev/null || true
+fi
+
 # Check if merchant schema exists
 SCHEMA_EXISTS=$(PGPASSWORD=talerpassword psql -h postgres -U taler -d "$MERCHANT_DB" -tc "SELECT 1 FROM information_schema.schemata WHERE schema_name = 'merchant'" 2>/dev/null | grep -q 1 && echo 'yes' || echo 'no')
 if [ "$SCHEMA_EXISTS" = "no" ]; then
@@ -46,11 +52,16 @@ fi
 # but we also add it to the database for completeness
 echo "Configuring merchant database..."
 
+echo "Checking database tables..."
+PGPASSWORD=talerpassword psql -h postgres -U taler -d "$MERCHANT_DB" -c "\dt merchant.*" 2>/dev/null | head -20
+
+# Try to update exchange in database using the correct table name
+# The table might be merchant_exchanges or merchant_exchange_keys
 PGPASSWORD=talerpassword psql -h postgres -U taler -d "$MERCHANT_DB" <<EOSQL 2>/dev/null || true
-    -- Delete old exchange entry to ensure fresh key
+    -- Try to delete from merchant_exchanges (older schema)
     DELETE FROM merchant.merchant_exchanges WHERE exchange_url = '${EXCHANGE_URL}/';
     
-    -- Add local exchange with current master key
+    -- Insert with current master key
     INSERT INTO merchant.merchant_exchanges 
         (exchange_url, master_pub, exchange_pub, last_keys, account_serial)
     VALUES 
@@ -59,6 +70,20 @@ PGPASSWORD=talerpassword psql -h postgres -U taler -d "$MERCHANT_DB" <<EOSQL 2>/
         master_pub = EXCLUDED.master_pub,
         exchange_pub = EXCLUDED.exchange_pub,
         last_keys = '{}'::jsonb;
+EOSQL
+
+# Also try merchant_exchange_keys (newer schema) if that failed
+PGPASSWORD=talerpassword psql -h postgres -U taler -d "$MERCHANT_DB" <<EOSQL 2>/dev/null || true
+    -- For newer schema: delete and insert into merchant_exchange_keys
+    DELETE FROM merchant.merchant_exchange_keys WHERE exchange_base_url = '${EXCHANGE_URL}/';
+    
+    INSERT INTO merchant.merchant_exchange_keys 
+        (exchange_base_url, master_pub, valid_from, valid_until)
+    VALUES 
+        ('${EXCHANGE_URL}/', '\x${MASTER_KEY}', NOW(), NOW() + INTERVAL '1 year')
+    ON CONFLICT (exchange_base_url) DO UPDATE SET
+        master_pub = EXCLUDED.master_pub;
+EOSQL
     
     -- Ensure admin instance has wire info configured
     UPDATE merchant.merchant_instances 
