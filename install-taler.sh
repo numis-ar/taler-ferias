@@ -509,6 +509,16 @@ if [ "$ADMIN_CHECK" != "admin" ]; then
         'TALER_MERCHANT_PASSWORD=adminpassword taler-merchant-passwd -c /etc/taler/taler.conf --instance=admin' 2>&1
 fi
 
+# Verify bank account is configured
+echo "Verifying merchant bank account..."
+BANK_ACCOUNT_CHECK=$(docker exec taler-postgres-${SUBDOMAIN} psql -U taler -d taler_merchant -tc "SELECT COUNT(*) FROM merchant.merchant_accounts" 2>/dev/null | xargs)
+if [ "$BANK_ACCOUNT_CHECK" = "0" ] || [ -z "$BANK_ACCOUNT_CHECK" ]; then
+    echo "Setting up merchant bank account..."
+    docker exec taler-merchant-${SUBDOMAIN} bash /tmp/init-merchant.sh 2>&1 || echo "Bank account setup may need manual intervention"
+else
+    echo "✓ Bank account configured ($BANK_ACCOUNT_CHECK account(s))"
+fi
+
 # Check if services are running
 if $COMPOSE_CMD ps | grep -q "Up"; then
     echo ""
