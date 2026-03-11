@@ -90,11 +90,11 @@ printf '%s\n' "services:
   libeufin-bank:
     container_name: taler-bank-${SUBDOMAIN}
     environment:
-      - BANK_CURRENCY=KUDOS
+      - LIBEUFIN_BANK_CURRENCY=KUDOS
     ports:
-      - \"0.0.0.0:${BANK_PORT}:8082\"
+      - \"0.0.0.0:${BANK_PORT}:8080\"
     volumes:
-      - fakebank_data_${SUBDOMAIN}:/app/data
+      - libeufin_bank_data_${SUBDOMAIN}:/var/lib/libeufin-bank
   
   taler-exchange:
     container_name: taler-exchange-${SUBDOMAIN}
