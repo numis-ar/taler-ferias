@@ -92,20 +92,23 @@ services:
         done
         
         # Ensure merchant database exists
-        PGPASSWORD=talerpassword psql -h postgres -U taler -tc "SELECT 1 FROM pg_database WHERE datname = 'taler_merchant'" | grep -q 1 || 
+        if ! PGPASSWORD=talerpassword psql -h postgres -U taler -tc "SELECT 1 FROM pg_database WHERE datname = 'taler_merchant'" | grep -q 1; then
+          echo 'Creating taler_merchant database...'
           PGPASSWORD=talerpassword psql -h postgres -U taler -c "CREATE DATABASE taler_merchant;"
+        fi
         
-        echo 'Initializing merchant database...'
-        if taler-merchant-dbinit -c /etc/taler/taler.conf 2>&1; then
-          echo 'Database initialized successfully'
+        # Check if schema exists
+        SCHEMA_EXISTS=$$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -tc "SELECT 1 FROM information_schema.schemata WHERE schema_name = 'merchant'" 2>/dev/null | grep -c 1 || echo 0)
+        
+        if [ "$$SCHEMA_EXISTS" = "0" ]; then
+          echo 'Initializing merchant database schema...'
+          taler-merchant-dbinit -c /etc/taler/taler.conf 2>&1 || {
+            echo 'WARNING: DB init failed, retrying...'
+            sleep 2
+            taler-merchant-dbinit -c /etc/taler/taler.conf 2>&1 || true
+          }
         else
-          echo 'WARNING: Database init may have failed or already done'
-          # Check if tables exist
-          TABLE_CHECK=$$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -tc "SELECT 1 FROM information_schema.tables WHERE table_schema = 'merchant' AND table_name = 'merchant_instances'" 2>/dev/null | grep -q 1 && echo 'exists' || echo 'missing')
-          if [ "$$TABLE_CHECK" = "missing" ]; then
-            echo 'ERROR: Required tables not found. Trying init again with force...'
-            taler-merchant-dbinit -c /etc/taler/taler.conf --force 2>&1 || true
-          fi
+          echo 'Merchant schema already exists'
         fi
         
         echo 'Creating/Updating admin instance...'
