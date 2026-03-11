@@ -29,6 +29,14 @@ fi
 
 echo "Exchange Master Key: $MASTER_KEY"
 
+# Check if merchant schema exists
+SCHEMA_EXISTS=$(PGPASSWORD=talerpassword psql -h postgres -U taler -d "$MERCHANT_DB" -tc "SELECT 1 FROM information_schema.schemata WHERE schema_name = 'merchant'" 2>/dev/null | grep -q 1 && echo 'yes' || echo 'no')
+if [ "$SCHEMA_EXISTS" = "no" ]; then
+    echo "ERROR: Merchant schema not found. Database may not be initialized."
+    echo "Trying to initialize now..."
+    taler-merchant-dbinit -c "$CONF_FILE" 2>&1 || true
+fi
+
 # Configure merchant to use local exchange via SQL
 # The merchant-demo.conf should already have the exchange configured,
 # but we also add it to the database for completeness

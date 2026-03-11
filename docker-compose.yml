@@ -96,7 +96,17 @@ services:
           PGPASSWORD=talerpassword psql -h postgres -U taler -c "CREATE DATABASE taler_merchant;"
         
         echo 'Initializing merchant database...'
-        taler-merchant-dbinit -c /etc/taler/taler.conf 2>&1 || true
+        if taler-merchant-dbinit -c /etc/taler/taler.conf 2>&1; then
+          echo 'Database initialized successfully'
+        else
+          echo 'WARNING: Database init may have failed or already done'
+          # Check if tables exist
+          TABLE_CHECK=$$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -tc "SELECT 1 FROM information_schema.tables WHERE table_schema = 'merchant' AND table_name = 'merchant_instances'" 2>/dev/null | grep -q 1 && echo 'exists' || echo 'missing')
+          if [ "$$TABLE_CHECK" = "missing" ]; then
+            echo 'ERROR: Required tables not found. Trying init again with force...'
+            taler-merchant-dbinit -c /etc/taler/taler.conf --force 2>&1 || true
+          fi
+        fi
         
         echo 'Creating/Updating admin instance...'
         TALER_MERCHANT_PASSWORD=adminpassword taler-merchant-passwd \
