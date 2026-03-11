@@ -162,8 +162,6 @@ CONFIG = postgres://taler:talerpassword@postgres:5432/taler_merchant
 [merchant-exchange-kudos]
 EXCHANGE_BASE_URL = http://taler-exchange:8081/
 CURRENCY = KUDOS
-EOF
-
 MASTER_KEY = PLACEHOLDER_WILL_BE_UPDATED
 EOF
 
