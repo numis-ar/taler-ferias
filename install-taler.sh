@@ -115,6 +115,7 @@ printf '%s\n' "services:
     environment:
       - EXCHANGE_URL=http://taler-exchange:8081
       - FULL_DOMAIN=${FULL_DOMAIN}
+      - TALER_MERCHANT_BASE_URL=https://${FULL_DOMAIN}/merchant/
     volumes:
       - ./merchant-demo.conf:/etc/taler/taler.conf:ro
       - merchant_data_${SUBDOMAIN}:/var/lib/taler-merchant
@@ -141,9 +142,6 @@ echo "Updating configuration files..."
 
 # Update exchange configuration
 sed -i "s|https://\${FULL_DOMAIN}/exchange/|https://${FULL_DOMAIN}/exchange/|g" exchange-local.conf || true
-
-# Update merchant configuration with base URL
-sed -i "s|https://EXCHANGE_HOST_PLACEHOLDER/merchant/|https://${FULL_DOMAIN}/merchant/|g" merchant-demo.conf || true
 
 # Update Merchant Web UI links
 sed -i "s|http://localhost:9966/webui/|https://${FULL_DOMAIN}/webui/|g" demo-frontend/index.html
