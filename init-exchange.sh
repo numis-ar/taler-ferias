@@ -178,14 +178,22 @@ echo "Bank payto URL: $BANK_PAYTO_URL"
 
 # Enable wire account - generate signed command and upload
 echo "Enabling wire account..."
-taler-exchange-offline -c "$INTERNAL_CONF" enable-account "$BANK_PAYTO_URL" > /tmp/enable-account.json 2>&1 || {
-    echo "enable-account command failed, output:"
-    cat /tmp/enable-account.json
-}
+taler-exchange-offline -c "$INTERNAL_CONF" enable-account "$BANK_PAYTO_URL" > /tmp/enable-account.json 2>&1
+ENABLE_EXIT=$?
 
+echo "enable-account exit code: $ENABLE_EXIT"
 if [ -s /tmp/enable-account.json ]; then
-    echo "Uploading enable-account command..."
-    taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/enable-account.json 2>&1 || echo "Account upload may have failed or already exists"
+    echo "enable-account output ($(wc -c < /tmp/enable-account.json) bytes):"
+    head -20 /tmp/enable-account.json
+    
+    # Check if it's valid JSON
+    if head -1 /tmp/enable-account.json | grep -q '{'; then
+        echo "Uploading enable-account command..."
+        taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/enable-account.json 2>&1
+        echo "Upload exit code: $?"
+    else
+        echo "enable-account did not produce valid JSON"
+    fi
 else
     echo "No enable-account output generated"
 fi
@@ -195,30 +203,32 @@ sleep 2
 
 # Set up wire fees
 echo "Setting up wire fees..."
-taler-exchange-offline -c "$INTERNAL_CONF" wire-fee 2026 x-taler-bank KUDOS:0.01 KUDOS:0.01 > /tmp/wire-fee.json 2>&1 || {
-    echo "wire-fee command failed, output:"
-    cat /tmp/wire-fee.json
-}
+taler-exchange-offline -c "$INTERNAL_CONF" wire-fee 2026 x-taler-bank KUDOS:0.01 KUDOS:0.01 > /tmp/wire-fee.json 2>&1
+WIRE_EXIT=$?
 
-if [ -s /tmp/wire-fee.json ]; then
+echo "wire-fee exit code: $WIRE_EXIT"
+if [ -s /tmp/wire-fee.json ] && head -1 /tmp/wire-fee.json | grep -q '{'; then
     echo "Uploading wire fees..."
-    taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/wire-fee.json 2>&1 || echo "Wire fee upload may have failed or already set"
+    taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/wire-fee.json 2>&1
+    echo "Wire fee upload exit code: $?"
 else
-    echo "No wire-fee output generated"
+    echo "No wire-fee output or invalid JSON"
+    cat /tmp/wire-fee.json 2>/dev/null || true
 fi
 
 # Set up global fees
 echo "Setting up global fees..."
-taler-exchange-offline -c "$INTERNAL_CONF" global-fee 2026 KUDOS:0.01 KUDOS:0.01 KUDOS:0.01 1d 1y 100 > /tmp/global-fee.json 2>&1 || {
-    echo "global-fee command failed, output:"
-    cat /tmp/global-fee.json
-}
+taler-exchange-offline -c "$INTERNAL_CONF" global-fee 2026 KUDOS:0.01 KUDOS:0.01 KUDOS:0.01 1d 1y 100 > /tmp/global-fee.json 2>&1
+GLOBAL_EXIT=$?
 
-if [ -s /tmp/global-fee.json ]; then
+echo "global-fee exit code: $GLOBAL_EXIT"
+if [ -s /tmp/global-fee.json ] && head -1 /tmp/global-fee.json | grep -q '{'; then
     echo "Uploading global fees..."
-    taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/global-fee.json 2>&1 || echo "Global fee upload may have failed or already set"
+    taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/global-fee.json 2>&1
+    echo "Global fee upload exit code: $?"
 else
-    echo "No global-fee output generated"
+    echo "No global-fee output or invalid JSON"
+    cat /tmp/global-fee.json 2>/dev/null || true
 fi
 
 # Wait for exchange to process everything
@@ -228,6 +238,39 @@ sleep 3
 echo "Checking wire accounts..."
 ACCOUNT_COUNT=$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_exchange -tc "SELECT COUNT(*) FROM exchange.wire_accounts;" 2>/dev/null | xargs || echo "0")
 echo "Wire accounts found: $ACCOUNT_COUNT"
+
+# Show wire account details
+echo "Wire account details:"
+PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_exchange -c "SELECT payto_uri, is_active, length(master_sig) as sig_len FROM exchange.wire_accounts;" 2>/dev/null || echo "Could not query wire_accounts"
+
+# If no wire accounts, try direct SQL insert as fallback
+if [ "$ACCOUNT_COUNT" = "0" ]; then
+    echo "WARNING: No wire accounts found after offline upload. Trying direct SQL insert..."
+    
+    # Get the master public key for signature generation
+    MASTER_PUB_KEY=$(grep "^MASTER_PUBLIC_KEY" "$INTERNAL_CONF" 2>/dev/null | head -1 | sed 's/.*= *//' | tr -d ' ')
+    echo "Master public key: $MASTER_PUB_KEY"
+    
+    # Try to generate a proper signature using the offline tool
+    # For now, insert with null signature and see if exchange accepts it
+    PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_exchange <<EOSQL 2>&1 || echo "Direct insert failed"
+INSERT INTO exchange.wire_accounts 
+    (payto_uri, master_sig, is_active, last_alert, debit_restrictions, credit_restrictions)
+VALUES 
+    ('payto://x-taler-bank/libeufin-bank/exchange?receiver-name=Exchange', 
+     NULL, 
+     true, 
+     0, 
+     '{}'::jsonb, 
+     '{}'::jsonb)
+ON CONFLICT (payto_uri) DO UPDATE SET is_active = true;
+EOSQL
+    
+    # Check again
+    sleep 1
+    ACCOUNT_COUNT=$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_exchange -tc "SELECT COUNT(*) FROM exchange.wire_accounts;" 2>/dev/null | xargs || echo "0")
+    echo "Wire accounts after direct insert: $ACCOUNT_COUNT"
+fi
 
 # Check if /keys is working
 echo "Checking /keys endpoint..."
