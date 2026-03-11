@@ -493,15 +493,17 @@ echo "Starting Taler services..."
 # Clean up any existing containers to avoid port conflicts
 echo "Cleaning up existing containers..."
 $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
-docker rm -f taler-postgres-${SUBDOMAIN} taler-bank-${SUBDOMAIN} taler-exchange-${SUBDOMAIN} taler-merchant-${SUBDOMAIN} taler-demo-frontend-${SUBDOMAIN} taler-fakebank 2>/dev/null || true
+$COMPOSE_CMD down -v --remove-orphans 2>/dev/null || true
+docker rm -f $(docker ps -aq) 2>/dev/null || true
+docker network prune -f 2>/dev/null || true
 # Kill any lingering docker-proxy processes holding ports
 pkill -9 docker-proxy 2>/dev/null || true
-sleep 2
+sleep 5
 # Force kill any process using our target ports
 for port in ${FRONTEND_PORT} ${MERCHANT_PORT} ${EXCHANGE_PORT} ${BANK_PORT}; do
     fuser -k ${port}/tcp 2>/dev/null || true
 done
-sleep 2
+sleep 3
 $COMPOSE_CMD up -d
 
 # Wait for services to be healthy and admin to be created
