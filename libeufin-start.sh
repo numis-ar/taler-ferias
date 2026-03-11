@@ -26,6 +26,30 @@ libeufin-bank dbinit -c /etc/libeufin/bank.conf || {
     echo "DB init may have already been done"
 }
 
+# Create admin account if password is provided
+if [ -n "$LIBEUFIN_BANK_ADMIN_PASSWORD" ]; then
+    echo "Setting up admin account..."
+    libeufin-bank passwd -c /etc/libeufin/bank.conf admin "$LIBEUFIN_BANK_ADMIN_PASSWORD" 2>/dev/null || echo "Admin account may already exist"
+fi
+
+# Create exchange account for Taler integration
+# This account is used by the Taler exchange to interact with the bank
+echo "Setting up exchange account..."
+libeufin-bank create-account \
+    -c /etc/libeufin/bank.conf \
+    '{"username":"exchange","password":"exchange","name":"Taler Exchange","is_taler_exchange":true}' 2>/dev/null || {
+    echo "Exchange account may already exist, updating password..."
+    libeufin-bank passwd -c /etc/libeufin/bank.conf exchange "exchange" 2>/dev/null || true
+}
+
+# Create a default user account for testing
+echo "Setting up test user account..."
+libeufin-bank create-account \
+    -c /etc/libeufin/bank.conf \
+    '{"username":"testuser","password":"testpass","name":"Test User"}' 2>/dev/null || {
+    echo "Test user account may already exist"
+}
+
 # Start the server
 echo "Starting libeufin-bank server..."
 exec libeufin-bank serve -c /etc/libeufin/bank.conf -L INFO
