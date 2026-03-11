@@ -242,6 +242,11 @@ server {
     }
 
     # Taler Exchange
+    # Redirect /exchange to /exchange/
+    location = /exchange {
+        return 301 /exchange/;
+    }
+    
     location /exchange/ {
         proxy_pass http://localhost:${EXCHANGE_PORT}/;
         proxy_set_header Host \$host;
@@ -348,6 +353,11 @@ server {
         proxy_redirect http://localhost:${MERCHANT_PORT}/ /;
     }
 
+    # Redirect /exchange to /exchange/
+    location = /exchange {
+        return 301 /exchange/;
+    }
+    
     location /exchange/ {
         proxy_pass http://localhost:${EXCHANGE_PORT}/;
         proxy_set_header Host \$host;
