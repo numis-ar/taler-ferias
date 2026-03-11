@@ -165,14 +165,14 @@ for i in {1..60}; do
     sleep 1
 done
 
-# Wait extra time for secmods to generate keys
-echo "Waiting for security modules to generate keys..."
-sleep 5
+# Wait extra time for secmods to generate keys and httpd to be fully ready
+echo "Waiting for security modules and httpd to be fully ready..."
+sleep 10
 
 echo ""
 echo "=== Configuring Exchange (offline operations) ==="
 
-# Bank payto URL
+# Bank payto URL - MUST match [exchange-account-1] PAYTO_URI in config
 BANK_PAYTO_URL="payto://x-taler-bank/libeufin-bank/exchange?receiver-name=Exchange"
 echo "Bank payto URL: $BANK_PAYTO_URL"
 
@@ -188,9 +188,16 @@ if [ -s /tmp/enable-account.json ]; then
     
     # Check if it's valid JSON
     if head -1 /tmp/enable-account.json | grep -q '{'; then
-        echo "Uploading enable-account command..."
-        taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/enable-account.json 2>&1
-        echo "Upload exit code: $?"
+        echo "Uploading enable-account command (with retry)..."
+        for retry in 1 2 3; do
+            if taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/enable-account.json 2>&1; then
+                echo "Upload successful!"
+                break
+            else
+                echo "Upload failed, retry $retry/3..."
+                sleep 3
+            fi
+        done
     else
         echo "enable-account did not produce valid JSON"
     fi
@@ -198,19 +205,27 @@ else
     echo "No enable-account output generated"
 fi
 
-# Wait a moment for account to be processed
-sleep 2
+# Wait for account to be processed
+echo "Waiting for wire account to be processed..."
+sleep 5
 
-# Set up wire fees
+# Set up wire fees (needed for /keys to work)
 echo "Setting up wire fees..."
 taler-exchange-offline -c "$INTERNAL_CONF" wire-fee 2026 x-taler-bank KUDOS:0.01 KUDOS:0.01 > /tmp/wire-fee.json 2>&1
 WIRE_EXIT=$?
 
 echo "wire-fee exit code: $WIRE_EXIT"
 if [ -s /tmp/wire-fee.json ] && head -1 /tmp/wire-fee.json | grep -q '{'; then
-    echo "Uploading wire fees..."
-    taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/wire-fee.json 2>&1
-    echo "Wire fee upload exit code: $?"
+    echo "Uploading wire fees (with retry)..."
+    for retry in 1 2 3; do
+        if taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/wire-fee.json 2>&1; then
+            echo "Wire fee upload successful!"
+            break
+        else
+            echo "Wire fee upload failed, retry $retry/3..."
+            sleep 2
+        fi
+    done
 else
     echo "No wire-fee output or invalid JSON"
     cat /tmp/wire-fee.json 2>/dev/null || true
@@ -223,9 +238,16 @@ GLOBAL_EXIT=$?
 
 echo "global-fee exit code: $GLOBAL_EXIT"
 if [ -s /tmp/global-fee.json ] && head -1 /tmp/global-fee.json | grep -q '{'; then
-    echo "Uploading global fees..."
-    taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/global-fee.json 2>&1
-    echo "Global fee upload exit code: $?"
+    echo "Uploading global fees (with retry)..."
+    for retry in 1 2 3; do
+        if taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/global-fee.json 2>&1; then
+            echo "Global fee upload successful!"
+            break
+        else
+            echo "Global fee upload failed, retry $retry/3..."
+            sleep 2
+        fi
+    done
 else
     echo "No global-fee output or invalid JSON"
     cat /tmp/global-fee.json 2>/dev/null || true
@@ -272,20 +294,30 @@ EOSQL
     echo "Wire accounts after direct insert: $ACCOUNT_COUNT"
 fi
 
-# Check if /keys is working
-echo "Checking /keys endpoint..."
-if curl -sf http://localhost:8081/keys > /tmp/exchange-keys.json 2>/dev/null; then
-    echo "/keys endpoint is working!"
-    if [ -s /tmp/exchange-keys.json ]; then
-        echo "Keys response size: $(wc -c < /tmp/exchange-keys.json) bytes"
-        # Try to extract master key for verification
-        MASTER_KEY_CHECK=$(cat /tmp/exchange-keys.json | python3 -c 'import sys,json; print(json.load(sys.stdin).get("master_public_key",""))' 2>/dev/null || echo "")
-        if [ -n "$MASTER_KEY_CHECK" ]; then
-            echo "Exchange master key: $MASTER_KEY_CHECK"
+# Final verification - wait for /keys to actually work
+echo ""
+echo "=== Verifying /keys endpoint ==="
+for i in {1..30}; do
+    if curl -sf http://localhost:8081/keys > /tmp/exchange-keys.json 2>/dev/null; then
+        echo "/keys endpoint is working!"
+        if [ -s /tmp/exchange-keys.json ]; then
+            echo "Keys response size: $(wc -c < /tmp/exchange-keys.json) bytes"
+            # Try to extract master key for verification
+            MASTER_KEY_CHECK=$(cat /tmp/exchange-keys.json | python3 -c 'import sys,json; print(json.load(sys.stdin).get("master_public_key",""))' 2>/dev/null || echo "")
+            if [ -n "$MASTER_KEY_CHECK" ]; then
+                echo "Exchange master key: $MASTER_KEY_CHECK"
+            fi
         fi
+        break
     fi
-else
-    echo "WARNING: /keys endpoint not responding yet"
+    echo "Waiting for /keys... ($i/30)"
+    sleep 2
+done
+
+if ! curl -sf http://localhost:8081/keys >/dev/null 2>&1; then
+    echo "WARNING: /keys endpoint still not working after configuration"
+    echo "Wire accounts in database:"
+    PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_exchange -c "SELECT payto_uri, is_active FROM exchange.wire_accounts;" 2>/dev/null || true
 fi
 
 # Download current keys, sign them, and upload
