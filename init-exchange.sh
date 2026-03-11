@@ -13,6 +13,11 @@ if [ -f /etc/taler/taler.conf ]; then
     if [ -n "$FULL_DOMAIN" ]; then
         echo "Configuring for domain: $FULL_DOMAIN"
         sed -i "s|EXCHANGE_HOST_PLACEHOLDER|$FULL_DOMAIN|g" /tmp/taler-exchange.conf
+    else
+        echo "WARNING: FULL_DOMAIN not set, using placeholder value"
+        # Try to get it from elsewhere or use a default
+        FULL_DOMAIN="${HOSTNAME:-localhost}"
+        sed -i "s|EXCHANGE_HOST_PLACEHOLDER|$FULL_DOMAIN|g" /tmp/taler-exchange.conf
     fi
     
     CONF_FILE=/tmp/taler-exchange.conf
