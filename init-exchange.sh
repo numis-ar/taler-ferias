@@ -131,4 +131,6 @@ sleep 2
 
 echo ""
 echo "=== Starting Exchange HTTPD ==="
+echo "Note: The exchange will generate denomination keys on first startup"
+echo "This may take a few minutes..."
 exec taler-exchange-httpd -c "$CONF_FILE" -L INFO
