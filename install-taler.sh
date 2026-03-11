@@ -142,6 +142,9 @@ echo "Updating configuration files..."
 # Update exchange configuration
 sed -i "s|https://\${FULL_DOMAIN}/exchange/|https://${FULL_DOMAIN}/exchange/|g" exchange-local.conf || true
 
+# Update merchant configuration with base URL
+sed -i "s|https://EXCHANGE_HOST_PLACEHOLDER/merchant/|https://${FULL_DOMAIN}/merchant/|g" merchant-demo.conf || true
+
 # Update Merchant Web UI links
 sed -i "s|http://localhost:9966/webui/|https://${FULL_DOMAIN}/webui/|g" demo-frontend/index.html
 sed -i "s|localhost:9966/webui|${FULL_DOMAIN}/webui|g" demo-frontend/index.html
@@ -223,6 +226,16 @@ server {
         proxy_redirect /webui/ /webui/;
         # Handle relative redirects that might cause double webui
         proxy_redirect webui/ /webui/;
+    }
+
+    # Merchant base path - proxy all merchant endpoints
+    location /merchant/ {
+        proxy_pass http://localhost:${MERCHANT_PORT}/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Authorization \$http_authorization;
     }
 
     # Merchant API endpoints
