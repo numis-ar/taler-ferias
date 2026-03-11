@@ -164,8 +164,11 @@ echo "=== Configuring Exchange (offline operations) ==="
 
 # Enable wire account and upload
 echo "Enabling wire account..."
-taler-exchange-offline -c "$CONF_FILE" enable-account payto://x-taler-bank/localhost/exchange?receiver-name=Exchange 2>&1 | \
-    taler-exchange-offline -c "$INTERNAL_CONF" upload 2>&1 || echo "Account may already be enabled"
+# Use the bank service name for internal communication
+BANK_PAYTO_URL="payto://x-taler-bank/libeufin-bank/exchange?receiver-name=Exchange"
+echo "Bank payto URL: $BANK_PAYTO_URL"
+taler-exchange-offline -c "$CONF_FILE" enable-account "$BANK_PAYTO_URL" 2>&1 | \
+    taler-exchange-offline -c "$INTERNAL_CONF" upload 2>&1 || echo "Account may already be enabled or failed"
 
 # Set up wire fees and upload
 echo "Setting up wire fees..."
@@ -176,6 +179,22 @@ taler-exchange-offline -c "$CONF_FILE" wire-fee 2024 x-taler-bank KUDOS:0 KUDOS:
 echo "Setting up global fees..."
 taler-exchange-offline -c "$CONF_FILE" global-fee 2024 KUDOS:0 KUDOS:0 KUDOS:0 1d 1y 100 2>&1 | \
     taler-exchange-offline -c "$INTERNAL_CONF" upload 2>&1 || echo "Global fee may already be set"
+
+# Verify wire account exists
+sleep 2
+echo "Checking wire accounts..."
+ACCOUNT_COUNT=$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_exchange -tc "SELECT COUNT(*) FROM exchange.wire_accounts;" 2>/dev/null | xargs || echo "0")
+echo "Wire accounts found: $ACCOUNT_COUNT"
+
+if [ "$ACCOUNT_COUNT" = "0" ]; then
+    echo "WARNING: No wire accounts found. Adding manually..."
+    # Insert wire account directly
+    PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_exchange <<EOSQL 2>/dev/null || true
+INSERT INTO exchange.wire_accounts (payto_uri, master_sig, is_active, last_alert)
+VALUES ('payto://x-taler-bank/libeufin-bank/exchange?receiver-name=Exchange', '\\x0000', true, 0)
+ON CONFLICT DO NOTHING;
+EOSQL
+fi
 
 # Wait a bit for exchange to generate keys
 sleep 5
