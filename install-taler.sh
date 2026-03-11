@@ -494,7 +494,9 @@ echo "Starting Taler services..."
 echo "Cleaning up existing containers..."
 $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
 docker rm -f taler-postgres-${SUBDOMAIN} taler-bank-${SUBDOMAIN} taler-exchange-${SUBDOMAIN} taler-merchant-${SUBDOMAIN} taler-demo-frontend-${SUBDOMAIN} taler-fakebank 2>/dev/null || true
-sleep 2
+# Kill any lingering docker-proxy processes holding ports
+pkill -9 docker-proxy 2>/dev/null || true
+sleep 3
 $COMPOSE_CMD up -d
 
 # Wait for services to be healthy and admin to be created
