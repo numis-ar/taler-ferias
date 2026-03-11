@@ -360,14 +360,18 @@ sudo rm -f "/etc/nginx/sites-enabled/taler-${SUBDOMAIN}-temp" 2>/dev/null || tru
 sudo rm -f "/etc/nginx/sites-available/taler-${SUBDOMAIN}-temp" 2>/dev/null || true
 
 # Enable the appropriate config
-if [ "$SSL_SUCCESS" = true ] && [ -f "/etc/letsencrypt/live/${FULL_DOMAIN}/fullchain.pem" ]; then
+if [ "$SSL_SUCCESS" = true ]; then
     echo "Enabling HTTPS configuration..."
     
-    # Add HTTPS server blocks to all configs
+    # Add HTTPS server blocks only for domains with valid certificates
     for DOMAIN_ITEM in "${FULL_DOMAIN}:${FRONTEND_PORT}:${SUBDOMAIN}" "${EXCHANGE_DOMAIN}:${EXCHANGE_PORT}:${EXCHANGE_SUBDOMAIN}" "${MERCHANT_DOMAIN}:${MERCHANT_PORT}:${MERCHANT_SUBDOMAIN}" "${BANK_DOMAIN}:${BANK_PORT}:${BANK_SUBDOMAIN}"; do
         IFS=':' read -r DNAME DPORT DSUB <<< "$DOMAIN_ITEM"
-        # Append HTTPS server block
-        printf '%s\n' "
+        
+        # Check if certificate exists for this domain
+        if [ -f "/etc/letsencrypt/live/${DNAME}/fullchain.pem" ]; then
+            echo "  Adding HTTPS for ${DNAME}"
+            # Append HTTPS server block
+            printf '%s\n' "
 
 server {
     listen 443 ssl;
@@ -390,6 +394,9 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }" | sudo tee -a "/etc/nginx/sites-available/taler-${DSUB}" > /dev/null
+        else
+            echo "  No SSL certificate for ${DNAME}, keeping HTTP only"
+        fi
     done
     
     sudo nginx -t && sudo systemctl reload nginx
