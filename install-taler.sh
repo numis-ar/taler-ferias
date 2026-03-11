@@ -71,11 +71,14 @@ git clone https://github.com/numis-ar/taler-ferias.git "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
 # 2. Generate unique ports based on subdomain hash (to avoid conflicts between instances)
-PORT_OFFSET=$(echo "$SUBDOMAIN" | cksum | cut -d' ' -f1 | awk '{print $1 % 100}')
-MERCHANT_PORT=$((9966 + PORT_OFFSET))
-FRONTEND_PORT=$((8080 + PORT_OFFSET))
-EXCHANGE_PORT=$((8081 + PORT_OFFSET))
-BANK_PORT=$((8080 + PORT_OFFSET))
+# Use high port range (30000+) to avoid conflicts
+# Base ports: 31000-31004 with subdomain-based offset
+PORT_OFFSET=$(echo "$SUBDOMAIN" | cksum | cut -d' ' -f1 | awk '{print $1 % 1000}')
+BASE_PORT=$((30000 + PORT_OFFSET))
+FRONTEND_PORT=$BASE_PORT
+MERCHANT_PORT=$((BASE_PORT + 1))
+EXCHANGE_PORT=$((BASE_PORT + 2))
+BANK_PORT=$((BASE_PORT + 3))
 
 echo "Using ports: Frontend=${FRONTEND_PORT}, Merchant=${MERCHANT_PORT}, Exchange=${EXCHANGE_PORT}, Bank=${BANK_PORT}"
 
