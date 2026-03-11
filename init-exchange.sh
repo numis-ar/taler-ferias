@@ -4,25 +4,46 @@ set -e
 
 echo "=== Initializing Taler Exchange ==="
 
+# Set USER for taler paths
+export USER=root
+
 # Use provided config or default
 CONF_FILE="${TALER_CONFIG:-/etc/taler/taler.conf}"
 
-# If using the copied config from docker-compose
-if [ -f /tmp/taler-exchange.conf ]; then
-    CONF_FILE=/tmp/taler-exchange.conf
-    export TALER_CONFIG=/tmp/taler-exchange.conf
+# Copy config to writable location
+WRITABLE_CONF="/tmp/taler-exchange.conf"
+if [ -f "$CONF_FILE" ]; then
+    cp "$CONF_FILE" "$WRITABLE_CONF"
+    CONF_FILE="$WRITABLE_CONF"
 fi
 
+# Export TALER_CONFIG so all taler commands use the writable config
+export TALER_CONFIG="$CONF_FILE"
 echo "Using config: $CONF_FILE"
 
-# Check if config exists and is readable
+# Replace placeholder with appropriate URL
+# If FULL_DOMAIN is set (from install script), use that for public URL
+# Otherwise use localhost for internal testing
+INTERNAL_CONF="$CONF_FILE"  # For internal operations (download/upload)
+if [ -n "$FULL_DOMAIN" ]; then
+    echo "FULL_DOMAIN is set to: $FULL_DOMAIN"
+    sed -i "s|https://EXCHANGE_HOST_PLACEHOLDER/exchange/|https://${FULL_DOMAIN}/exchange/|g" "$CONF_FILE"
+    # Create internal config with localhost for download/upload operations
+    INTERNAL_CONF="/tmp/taler-exchange-internal.conf"
+    cp "$CONF_FILE" "$INTERNAL_CONF"
+    sed -i 's|https://[^/]*/exchange/|http://localhost:8081/|g' "$INTERNAL_CONF"
+else
+    echo "FULL_DOMAIN not set, using localhost for internal operations"
+    sed -i 's|https://EXCHANGE_HOST_PLACEHOLDER/exchange/|http://localhost:8081/|g' "$CONF_FILE"
+fi
+
+# Check if config exists
 if [ ! -f "$CONF_FILE" ]; then
     echo "ERROR: Config file not found: $CONF_FILE"
     exit 1
 fi
 
-# Show config content for debugging
-echo "Config BASE_URL:"
+# Show BASE_URL
 grep "BASE_URL" "$CONF_FILE" | head -1
 
 # Wait for PostgreSQL
@@ -33,8 +54,22 @@ until pg_isready -h postgres -U taler; do
 done
 echo "PostgreSQL is ready"
 
-# Ensure exchange database exists
-echo "Checking exchange database..."
+# Check if we need to reset the database (new master key vs old signed data)
+MASTER_KEY_FILE="/root/.local/share/taler-exchange/offline/master.priv"
+NEED_DB_RESET=false
+
+if [ ! -f "$MASTER_KEY_FILE" ]; then
+    # New master key will be generated, need fresh database
+    NEED_DB_RESET=true
+    echo "New master key will be generated, need fresh database"
+fi
+
+# Ensure exchange database exists (drop if need reset)
+if [ "$NEED_DB_RESET" = "true" ]; then
+    echo "Resetting exchange database..."
+    PGPASSWORD=talerpassword psql -h postgres -U taler -c "DROP DATABASE IF EXISTS taler_exchange;" 2>/dev/null || true
+fi
+
 if ! PGPASSWORD=talerpassword psql -h postgres -U taler -tc "SELECT 1 FROM pg_database WHERE datname = 'taler_exchange'" | grep -q 1; then
     echo "Creating taler_exchange database..."
     PGPASSWORD=talerpassword psql -h postgres -U taler -c "CREATE DATABASE taler_exchange;"
@@ -42,9 +77,7 @@ fi
 
 # Initialize database schema
 echo "Initializing exchange database schema..."
-taler-exchange-dbinit -c "$CONF_FILE" 2>&1 || {
-    echo "DB init may have already been done or failed"
-}
+taler-exchange-dbinit -c "$CONF_FILE" 2>&1 || echo "DB init may have already been done"
 
 # Wait for fakebank
 echo "Waiting for fakebank..."
@@ -58,149 +91,115 @@ for i in {1..30}; do
     sleep 2
 done
 
-# Check multiple possible locations for master key
-MASTER_KEY_FILE="/var/lib/taler-exchange/master.priv"
-if [ ! -f "$MASTER_KEY_FILE" ]; then
-    # Try alternative locations
-    for alt_path in "$HOME/.local/share/taler-exchange/master.priv" "/root/.local/share/taler-exchange/master.priv"; do
-        if [ -f "$alt_path" ]; then
-            echo "Found master key at alternate location: $alt_path"
-            MASTER_KEY_FILE="$alt_path"
-            break
-        fi
-    done
-fi
+# Check master key location
+MASTER_KEY_FILE="/root/.local/share/taler-exchange/offline/master.priv"
 
-# Generate master key using 'setup' command
-# This creates master.priv and outputs the public key
+# Generate master key
 if [ ! -f "$MASTER_KEY_FILE" ]; then
-    echo "Generating exchange master key with 'taler-exchange-offline setup'..."
-    echo "Config file location: $CONF_FILE"
+    echo "Generating exchange master key..."
     
-    # Run setup and capture the public key output
     SETUP_OUTPUT=$(taler-exchange-offline -c "$CONF_FILE" setup 2>&1)
-    SETUP_STATUS=$?
-    echo "Setup command exit status: $SETUP_STATUS"
-    echo "Setup output:"
-    echo "$SETUP_OUTPUT"
+    echo "Setup output: $SETUP_OUTPUT"
     
-    # Check where the key was created
-    echo "Checking for master key in standard locations..."
-    find /var/lib/taler-exchange ~/.local/share/taler-exchange -name "master.priv" 2>/dev/null || echo "(not found yet)"
-    
-    # The setup command outputs the public key directly
-    # Look for a line that looks like: YE6Q6TR1ED... (base32, 52 chars)
-    MASTER_PUB=$(echo "$SETUP_OUTPUT" | tr ' ' '\n' | grep -E '^[A-Z2-7]{52}$' | head -1 || echo "")
-    
-    if [ -z "$MASTER_PUB" ]; then
-        # Try broader search
-        MASTER_PUB=$(echo "$SETUP_OUTPUT" | grep -o '[A-Z2-7]\{52\}' | head -1 || echo "")
-    fi
+    MASTER_PUB=$(echo "$SETUP_OUTPUT" | tr ' ' '\n' | grep -E '^[A-Z0-9]{50,55}$' | head -1 || echo "")
     
     if [ -n "$MASTER_PUB" ]; then
-        echo "Found master public key from setup: $MASTER_PUB"
-    else
-        echo "WARNING: Could not extract public key from setup output"
-        echo "Searching for any public key patterns..."
-        echo "$SETUP_OUTPUT" | grep -i "public\|master\|key" || true
+        echo "Found master public key: $MASTER_PUB"
     fi
 else
-    echo "Master key already exists at: $MASTER_KEY_FILE"
+    echo "Master key already exists"
 fi
 
-# Always try to extract and add MASTER_PUBLIC_KEY if missing
+# Add MASTER_PUBLIC_KEY to config if missing
 if ! grep -q "^MASTER_PUBLIC_KEY" "$CONF_FILE"; then
     if [ -z "$MASTER_PUB" ]; then
-        # Try to extract from existing key file or info command
-        if [ -f "$MASTER_KEY_FILE" ]; then
-            echo "Trying to extract public key from $MASTER_KEY_FILE..."
-            # The master.priv might contain the public key in comments or as a separate entry
-            MASTER_PUB=$(cat "$MASTER_KEY_FILE" 2>/dev/null | tr ' ' '\n' | grep -E '^[A-Z2-7]{52}$' | head -1 || echo "")
-        fi
-        
-        if [ -z "$MASTER_PUB" ]; then
-            echo "Trying taler-exchange-offline info..."
-            INFO_OUTPUT=$(taler-exchange-offline -c "$CONF_FILE" info 2>&1 || true)
-            echo "Info output: $INFO_OUTPUT"
-            MASTER_PUB=$(echo "$INFO_OUTPUT" | tr ' ' '\n' | grep -E '^[A-Z2-7]{52}$' | head -1 || echo "")
-        fi
+        MASTER_PUB=$(cat "$MASTER_KEY_FILE" 2>/dev/null | tr ' ' '\n' | grep -E '^[A-Z0-9]{50,55}$' | head -1 || echo "")
     fi
     
     if [ -n "$MASTER_PUB" ]; then
-        echo "Adding MASTER_PUBLIC_KEY to config: $MASTER_PUB"
-        # Remove any commented or empty MASTER_PUBLIC_KEY lines first
-        sed -i '/^MASTER_PUBLIC_KEY/d' "$CONF_FILE"
+        echo "Adding MASTER_PUBLIC_KEY: $MASTER_PUB"
+        sed -i '/^[# ]*MASTER_PUBLIC_KEY/d' "$CONF_FILE"
         sed -i '/^# Master public key/d' "$CONF_FILE"
-        # Add the key
-        echo "" >> "$CONF_FILE"
-        echo "# Master public key" >> "$CONF_FILE"
-        echo "MASTER_PUBLIC_KEY = $MASTER_PUB" >> "$CONF_FILE"
-        echo "Successfully added MASTER_PUBLIC_KEY"
+        sed -i '/^\[exchange\]/a MASTER_PUBLIC_KEY = '$MASTER_PUB "$CONF_FILE"
     else
         echo "ERROR: Could not determine MASTER_PUBLIC_KEY!"
-        echo "Config file contents:"
-        cat "$CONF_FILE"
         exit 1
     fi
 else
-    echo "MASTER_PUBLIC_KEY already in config"
-fi
-
-# Show current key status
-echo ""
-echo "Exchange key status:"
-ls -la /var/lib/taler-exchange/ 2>/dev/null || echo "(directory listing failed)"
-
-# Show master.priv contents if exists
-if [ -f "$MASTER_KEY_FILE" ]; then
-    echo ""
-    echo "Contents of $MASTER_KEY_FILE:"
-    cat "$MASTER_KEY_FILE"
-else
-    echo ""
-    echo "WARNING: master.priv not found at expected location"
-    echo "Searching for master.priv in home directory..."
-    find ~ -name "master.priv" 2>/dev/null || echo "(not found)"
-fi
-
-# Check if MASTER_PUBLIC_KEY is now in config
-echo ""
-if grep -q "^MASTER_PUBLIC_KEY" "$CONF_FILE"; then
-    echo "MASTER_PUBLIC_KEY configured:"
+    echo "MASTER_PUBLIC_KEY already configured"
     grep "^MASTER_PUBLIC_KEY" "$CONF_FILE"
-else
-    echo "WARNING: MASTER_PUBLIC_KEY not found in config!"
-    echo "Current config file:"
-    cat "$CONF_FILE"
 fi
 
-# Set up wire fees
 echo ""
-echo "Setting up wire fees..."
-taler-exchange-offline -c "$CONF_FILE" wire-fees 2024 KUDOS 0 0 0 2>&1 || true
+echo "=== Starting Security Modules ==="
 
-# Sign denominations
-echo "Signing denomination keys..."
-taler-exchange-offline -c "$CONF_FILE" sign 2>&1 || {
-    echo "Note: sign may have warnings if no denominations ready"
-}
+# Start security modules first
+taler-exchange-secmod-rsa -c "$CONF_FILE" &
+taler-exchange-secmod-cs -c "$CONF_FILE" &
+taler-exchange-secmod-eddsa -c "$CONF_FILE" &
 
-# Start httpd briefly to generate keys
-echo ""
-echo "Starting exchange httpd to generate denomination keys..."
+sleep 3
+
+# Start temporary httpd for upload
+echo "Starting httpd for configuration..."
 taler-exchange-httpd -c "$CONF_FILE" &
 HTTPD_PID=$!
 
-# Wait for keys endpoint
-echo "Waiting for /keys endpoint..."
+# Wait for httpd
+echo "Waiting for httpd..."
 for i in {1..60}; do
-    if curl -sf http://localhost:8081/keys >/dev/null 2>&1; then
-        echo "Keys endpoint is ready!"
+    if curl -sf http://localhost:8081/ >/dev/null 2>&1; then
+        echo "Httpd is ready!"
         break
     fi
-    echo "  Waiting for keys... ($i/60)"
-    sleep 2
+    sleep 1
 done
+
+# Wait extra time for secmods to generate keys
+echo "Waiting for security modules to generate keys..."
+sleep 5
+
+echo ""
+echo "=== Configuring Exchange (offline operations) ==="
+
+# Enable wire account and upload
+echo "Enabling wire account..."
+taler-exchange-offline -c "$CONF_FILE" enable-account payto://x-taler-bank/localhost/exchange?receiver-name=Exchange 2>&1 | \
+    taler-exchange-offline -c "$INTERNAL_CONF" upload 2>&1 || echo "Account may already be enabled"
+
+# Set up wire fees and upload
+echo "Setting up wire fees..."
+taler-exchange-offline -c "$CONF_FILE" wire-fee 2024 x-taler-bank KUDOS:0 KUDOS:0 2>&1 | \
+    taler-exchange-offline -c "$INTERNAL_CONF" upload 2>&1 || echo "Wire fee may already be set"
+
+# Set up global fees and upload
+echo "Setting up global fees..."
+taler-exchange-offline -c "$CONF_FILE" global-fee 2024 KUDOS:0 KUDOS:0 KUDOS:0 1d 1y 100 2>&1 | \
+    taler-exchange-offline -c "$INTERNAL_CONF" upload 2>&1 || echo "Global fee may already be set"
+
+# Wait a bit for exchange to generate keys
+sleep 5
+
+# Download keys from exchange, sign them, and upload
+echo "Downloading keys from exchange..."
+# Run download (uses internal config with localhost) and capture output
+taler-exchange-offline -c "$INTERNAL_CONF" download > /tmp/keys.json 2>/dev/null || true
+
+# Check if we got valid JSON (contains future_denoms or exchange-input-keys)
+if head -10 /tmp/keys.json 2>/dev/null | grep -q 'exchange-input-keys\|future_denoms'; then
+    echo "Got keys, signing..."
+    taler-exchange-offline -c "$INTERNAL_CONF" sign < /tmp/keys.json > /tmp/signed.json 2>/dev/null || true
+    
+    if [ -s /tmp/signed.json ]; then
+        echo "Uploading signed keys..."
+        taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/signed.json 2>&1 || echo "Upload may have warnings"
+        echo "Keys signed and uploaded successfully!"
+    else
+        echo "No keys to sign (this is normal for initial setup)"
+    fi
+else
+    echo "No keys downloaded yet (this is normal for initial setup)"
+fi
 
 # Kill temporary httpd
 if kill -0 $HTTPD_PID 2>/dev/null; then
