@@ -68,26 +68,10 @@ else
     echo "Master key already exists"
 fi
 
-# Extract and add master public key to config
+# The exchange will derive MASTER_PUBLIC_KEY from master.priv automatically
+# No need to extract and configure it manually
 if [ -f /var/lib/taler-exchange/master.priv ]; then
-    echo "Extracting master public key..."
-    # Extract the public key from the private key file
-    # Format in master.priv is typically base32-encoded public key
-    MASTER_PUB=$(grep -o '[A-Z2-7]\{52\}' /var/lib/taler-exchange/master.priv | head -1 || echo "")
-    if [ -z "$MASTER_PUB" ]; then
-        # Try alternative extraction
-        MASTER_PUB=$(cat /var/lib/taler-exchange/master.priv | tr -d '\n' | grep -o '[A-Z2-7]\{40,60\}' | head -1 || echo "")
-    fi
-    if [ -n "$MASTER_PUB" ]; then
-        echo "Found master public key: $MASTER_PUB"
-        echo "Adding MASTER_PUBLIC_KEY to config..."
-        # Replace placeholder or add if not exists
-        sed -i "s/MASTER_KEY_PLACEHOLDER/$MASTER_PUB/" "$CONF_FILE"
-    else
-        echo "WARNING: Could not extract master public key from master.priv"
-        echo "Contents of master.priv:"
-        head -5 /var/lib/taler-exchange/master.priv
-    fi
+    echo "Master key file exists"
 else
     echo "WARNING: master.priv not found after key generation"
 fi
