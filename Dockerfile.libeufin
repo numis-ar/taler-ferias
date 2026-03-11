@@ -1,0 +1,36 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg2 \
+    curl \
+    ca-certificates \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add Taler repository
+RUN mkdir -p /etc/apt/keyrings && \
+    wget -O /etc/apt/keyrings/taler-systems.gpg https://taler.net/taler-systems.gpg && \
+    echo 'deb [signed-by=/etc/apt/keyrings/taler-systems.gpg] https://deb.taler.net/apt/ubuntu/ noble main' > /etc/apt/sources.list.d/taler.list
+
+# Install Libeufin Bank (simulated bank for testing)
+RUN apt-get update && apt-get install -y \
+    libeufin-bank \
+    libeufin-common \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create data directory
+RUN mkdir -p /var/lib/libeufin-bank
+
+# Environment variables
+ENV LIBEUFIN_BANK_CURRENCY=KUDOS
+ENV LIBEUFIN_BANK_PORT=8082
+
+# Default port
+EXPOSE 8082
+
+# Start libeufin bank
+CMD ["libeufin-bank", "serve", "--port", "8082"]

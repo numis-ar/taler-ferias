@@ -17,26 +17,23 @@ services:
     networks:
       - taler-network
 
-  # Libeufin Sandbox - Simulated bank with real authentication
-  libeufin-sandbox:
-    image: registry.gitlab.com/libeufin/libeufin-sandbox:latest
-    container_name: taler-sandbox
+  # Libeufin Bank - Simulated bank with real authentication
+  libeufin-bank:
+    build:
+      context: .
+      dockerfile: Dockerfile.libeufin
+    container_name: taler-bank
     ports:
       - "8082"
     environment:
-      - LIBEUFIN_SANDBOX_ADMIN_PASSWORD=sandboxadmin
-      - LIBEUFIN_SANDBOX_CURRENCY=KUDOS
+      - LIBEUFIN_BANK_ADMIN_PASSWORD=bankadmin
+      - LIBEUFIN_BANK_CURRENCY=KUDOS
+      - LIBEUFIN_BANK_PORT=8082
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - taler-network
-    command: >
-      sh -c "
-        echo 'Waiting for postgres...' &&
-        sleep 5 &&
-        libeufin-sandbox serve --port 8082
-      "
 
   taler-exchange:
     build:
@@ -46,7 +43,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      libeufin-sandbox:
+      libeufin-bank:
         condition: service_started
     ports:
       - "8081"
@@ -70,7 +67,7 @@ services:
         condition: service_healthy
       taler-exchange:
         condition: service_started
-      libeufin-sandbox:
+      libeufin-bank:
         condition: service_started
     ports:
       - "9966"

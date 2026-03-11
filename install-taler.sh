@@ -87,8 +87,8 @@ printf '%s\n' "services:
     volumes:
       - postgres_data_${SUBDOMAIN}:/var/lib/postgresql/data
     
-  libeufin-sandbox:
-    container_name: taler-sandbox-${SUBDOMAIN}
+  libeufin-bank:
+    container_name: taler-bank-${SUBDOMAIN}
     environment:
       - BANK_CURRENCY=KUDOS
     ports:
@@ -127,7 +127,7 @@ volumes:
   postgres_data_${SUBDOMAIN}:
   merchant_data_${SUBDOMAIN}:
   exchange_data_${SUBDOMAIN}:
-  libeufin_sandbox_data_${SUBDOMAIN}:
+  libeufin_bank_data_${SUBDOMAIN}:
 " > docker-compose.override.yml
 
 echo "Created docker-compose.override.yml"
