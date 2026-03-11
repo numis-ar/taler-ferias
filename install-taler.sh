@@ -115,9 +115,8 @@ printf '%s\n' "services:
     environment:
       - EXCHANGE_URL=http://taler-exchange:8081
       - FULL_DOMAIN=${FULL_DOMAIN}
-      - TALER_MERCHANT_BASE_URL=https://${FULL_DOMAIN}/merchant/
     volumes:
-      - ./merchant-demo.conf:/etc/taler/taler.conf:ro
+      - ./merchant-${SUBDOMAIN}.conf:/etc/taler/taler.conf:ro
       - merchant_data_${SUBDOMAIN}:/var/lib/taler-merchant
     ports:
       - \"0.0.0.0:${MERCHANT_PORT}:9966\"
@@ -142,6 +141,27 @@ echo "Updating configuration files..."
 
 # Update exchange configuration
 sed -i "s|https://\${FULL_DOMAIN}/exchange/|https://${FULL_DOMAIN}/exchange/|g" exchange-local.conf || true
+
+# Generate merchant configuration with correct BASE_URL
+cat > "merchant-${SUBDOMAIN}.conf" << EOF
+# Taler Merchant Configuration - Auto-generated for ${FULL_DOMAIN}
+[taler]
+CURRENCY = KUDOS
+
+[merchant]
+SERVE = tcp
+PORT = 9966
+DATABASE = postgres
+BASE_URL = https://${FULL_DOMAIN}/merchant/
+
+[merchantdb-postgres]
+CONFIG = postgres://taler:talerpassword@postgres:5432/taler_merchant
+
+# Use the local exchange
+[merchant-exchange-kudos]
+EXCHANGE_BASE_URL = https://${FULL_DOMAIN}/exchange/
+CURRENCY = KUDOS
+EOF
 
 # Update Merchant Web UI links
 sed -i "s|http://localhost:9966/webui/|https://${FULL_DOMAIN}/webui/|g" demo-frontend/index.html
