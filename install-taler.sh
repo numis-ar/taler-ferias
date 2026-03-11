@@ -495,17 +495,14 @@ echo "Cleaning up existing containers..."
 $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
 $COMPOSE_CMD down -v --remove-orphans 2>/dev/null || true
 docker rm -f $(docker ps -aq) 2>/dev/null || true
-docker network rm $(docker network ls -q) 2>/dev/null || true
-docker network prune -f 2>/dev/null || true
-docker system prune -f 2>/dev/null || true
-# Kill any lingering docker-proxy processes holding ports
-pkill -9 docker-proxy 2>/dev/null || true
-sleep 5
-# Force kill any process using our target ports
-for port in ${FRONTEND_PORT} ${MERCHANT_PORT} ${EXCHANGE_PORT} ${BANK_PORT}; do
-    fuser -k ${port}/tcp 2>/dev/null || true
-done
-sleep 3
+# Fix: Delete Docker's network state file to release stuck ports
+# This is needed when docker-proxy holds ports after container removal
+if [ -f /var/lib/docker/network/files/local-kv.db ]; then
+    systemctl stop docker 2>/dev/null || service docker stop 2>/dev/null || true
+    rm -f /var/lib/docker/network/files/local-kv.db
+    systemctl start docker 2>/dev/null || service docker start 2>/dev/null || true
+    sleep 3
+fi
 $COMPOSE_CMD up -d
 
 # Wait for services to be healthy and admin to be created
