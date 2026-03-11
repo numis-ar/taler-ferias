@@ -191,150 +191,26 @@ sed -i "s|href=\"http://localhost:9966/webui/\"|href=\"https://${FULL_DOMAIN}/we
 # 5. Create nginx configs for subdomains
 echo "Creating nginx configuration..."
 
-# Create main frontend nginx config
-# Create nginx configs using printf for proper variable expansion
-printf '%s\n' "server {
+# Create HTTP-only configs first (for certbot challenge)
+for DOMAIN_ITEM in "${FULL_DOMAIN}:${FRONTEND_PORT}:${SUBDOMAIN}" "${EXCHANGE_DOMAIN}:${EXCHANGE_PORT}:${EXCHANGE_SUBDOMAIN}" "${MERCHANT_DOMAIN}:${MERCHANT_PORT}:${MERCHANT_SUBDOMAIN}" "${BANK_DOMAIN}:${BANK_PORT}:${BANK_SUBDOMAIN}"; do
+    IFS=':' read -r DNAME DPORT DSUB <<< "$DOMAIN_ITEM"
+    printf '%s\n' "server {
     listen 80;
-    server_name ${FULL_DOMAIN};
+    server_name ${DNAME};
     
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
     }
 
     location / {
-        return 301 https://\$server_name\$request_uri;
-    }
-}
-
-server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    http2 on;
-    server_name ${FULL_DOMAIN};
-
-    ssl_certificate /etc/letsencrypt/live/${FULL_DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${FULL_DOMAIN}/privkey.pem;
-
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
-    ssl_prefer_server_ciphers off;
-
-    location / {
-        proxy_pass http://localhost:${FRONTEND_PORT};
+        proxy_pass http://localhost:${DPORT};
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
-}" | sudo tee "/etc/nginx/sites-available/taler-${SUBDOMAIN}" > /dev/null
-
-# Create exchange nginx config
-printf '%s\n' "server {
-    listen 80;
-    server_name ${EXCHANGE_DOMAIN};
-    
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
-
-    location / {
-        return 301 https://\$server_name\$request_uri;
-    }
-}
-
-server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    http2 on;
-    server_name ${EXCHANGE_DOMAIN};
-
-    ssl_certificate /etc/letsencrypt/live/${EXCHANGE_DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${EXCHANGE_DOMAIN}/privkey.pem;
-
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
-    ssl_prefer_server_ciphers off;
-
-    location / {
-        proxy_pass http://localhost:${EXCHANGE_PORT};
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}" | sudo tee "/etc/nginx/sites-available/taler-${EXCHANGE_SUBDOMAIN}" > /dev/null
-
-# Create merchant nginx config
-printf '%s\n' "server {
-    listen 80;
-    server_name ${MERCHANT_DOMAIN};
-    
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
-
-    location / {
-        return 301 https://\$server_name\$request_uri;
-    }
-}
-
-server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    http2 on;
-    server_name ${MERCHANT_DOMAIN};
-
-    ssl_certificate /etc/letsencrypt/live/${MERCHANT_DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${MERCHANT_DOMAIN}/privkey.pem;
-
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
-    ssl_prefer_server_ciphers off;
-
-    location / {
-        proxy_pass http://localhost:${MERCHANT_PORT};
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}" | sudo tee "/etc/nginx/sites-available/taler-${MERCHANT_SUBDOMAIN}" > /dev/null
-
-# Create bank nginx config
-printf '%s\n' "server {
-    listen 80;
-    server_name ${BANK_DOMAIN};
-    
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
-
-    location / {
-        return 301 https://\$server_name\$request_uri;
-    }
-}
-
-server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    http2 on;
-    server_name ${BANK_DOMAIN};
-
-    ssl_certificate /etc/letsencrypt/live/${BANK_DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${BANK_DOMAIN}/privkey.pem;
-
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
-    ssl_prefer_server_ciphers off;
-
-    location / {
-        proxy_pass http://localhost:${BANK_PORT};
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}" | sudo tee "/etc/nginx/sites-available/taler-${BANK_SUBDOMAIN}" > /dev/null
+}" | sudo tee "/etc/nginx/sites-available/taler-${DSUB}" > /dev/null
+done
 
 # Enable all nginx sites
 sudo ln -sf "/etc/nginx/sites-available/taler-${SUBDOMAIN}" "/etc/nginx/sites-enabled/"
@@ -342,8 +218,6 @@ sudo ln -sf "/etc/nginx/sites-available/taler-${EXCHANGE_SUBDOMAIN}" "/etc/nginx
 sudo ln -sf "/etc/nginx/sites-available/taler-${MERCHANT_SUBDOMAIN}" "/etc/nginx/sites-enabled/" 2>/dev/null || true
 sudo ln -sf "/etc/nginx/sites-available/taler-${BANK_SUBDOMAIN}" "/etc/nginx/sites-enabled/" 2>/dev/null || true
 
-# Enable nginx site
-sudo ln -sf "/etc/nginx/sites-available/taler-${SUBDOMAIN}" "/etc/nginx/sites-enabled/"
 sudo nginx -t && sudo systemctl reload nginx
 
 # 6. Get SSL certificate for subdomain
@@ -452,10 +326,15 @@ sudo nginx -t && sudo systemctl reload nginx
 # Get certificate using webroot method
 SSL_SUCCESS=false
 # Check if all certificates exist
-if sudo certbot certificates 2>/dev/null | grep -q "${FULL_DOMAIN}" && \
-   sudo certbot certificates 2>/dev/null | grep -q "${EXCHANGE_DOMAIN}" && \
-   sudo certbot certificates 2>/dev/null | grep -q "${MERCHANT_DOMAIN}" && \
-   sudo certbot certificates 2>/dev/null | grep -q "${BANK_DOMAIN}"; then
+ALL_CERTS_EXIST=true
+for DOMAIN_CHECK in "${FULL_DOMAIN}" "${EXCHANGE_DOMAIN}" "${MERCHANT_DOMAIN}" "${BANK_DOMAIN}"; do
+    if ! sudo certbot certificates 2>/dev/null | grep -q "${DOMAIN_CHECK}"; then
+        ALL_CERTS_EXIST=false
+        break
+    fi
+done
+
+if [ "$ALL_CERTS_EXIST" = true ]; then
     echo "SSL certificates already exist for all subdomains"
     SSL_SUCCESS=true
 else
@@ -467,111 +346,58 @@ else
         echo "SSL certificates obtained successfully!"
     else
         echo "WARNING: SSL certificate creation failed."
-        echo "Make sure DNS for ${FULL_DOMAIN} points to this server."
+        echo "Make sure DNS for all subdomains points to this server:"
+        echo "  - ${FULL_DOMAIN}"
+        echo "  - ${EXCHANGE_DOMAIN}"
+        echo "  - ${MERCHANT_DOMAIN}"
+        echo "  - ${BANK_DOMAIN}"
         echo "Continuing with HTTP-only setup..."
     fi
-else
-    echo "SSL certificate for ${FULL_DOMAIN} already exists."
-    SSL_SUCCESS=true
 fi
 
-# Remove temp config
-sudo rm -f "/etc/nginx/sites-enabled/taler-${SUBDOMAIN}-temp"
-sudo rm -f "/etc/nginx/sites-available/taler-${SUBDOMAIN}-temp"
+# Remove temp config if exists
+sudo rm -f "/etc/nginx/sites-enabled/taler-${SUBDOMAIN}-temp" 2>/dev/null || true
+sudo rm -f "/etc/nginx/sites-available/taler-${SUBDOMAIN}-temp" 2>/dev/null || true
 
 # Enable the appropriate config
-if [ "$SSL_SUCCESS" = true ] && [ -f "$SSL_CERT_PATH" ]; then
+if [ "$SSL_SUCCESS" = true ] && [ -f "/etc/letsencrypt/live/${FULL_DOMAIN}/fullchain.pem" ]; then
     echo "Enabling HTTPS configuration..."
-    sudo ln -sf "/etc/nginx/sites-available/taler-${SUBDOMAIN}" "/etc/nginx/sites-enabled/"
+    
+    # Add HTTPS server blocks to all configs
+    for DOMAIN_ITEM in "${FULL_DOMAIN}:${FRONTEND_PORT}:${SUBDOMAIN}" "${EXCHANGE_DOMAIN}:${EXCHANGE_PORT}:${EXCHANGE_SUBDOMAIN}" "${MERCHANT_DOMAIN}:${MERCHANT_PORT}:${MERCHANT_SUBDOMAIN}" "${BANK_DOMAIN}:${BANK_PORT}:${BANK_SUBDOMAIN}"; do
+        IFS=':' read -r DNAME DPORT DSUB <<< "$DOMAIN_ITEM"
+        # Append HTTPS server block
+        printf '%s\n' "
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name ${DNAME};
+
+    ssl_certificate /etc/letsencrypt/live/${DNAME}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DNAME}/privkey.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
+    ssl_prefer_server_ciphers off;
+
+    location / {
+        proxy_pass http://localhost:${DPORT};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}" | sudo tee -a "/etc/nginx/sites-available/taler-${DSUB}" > /dev/null
+    done
+    
     sudo nginx -t && sudo systemctl reload nginx
     BASE_URL="https://${FULL_DOMAIN}"
 else
     echo "Enabling HTTP-only configuration..."
     # Create HTTP-only config permanently
-    sudo tee "/etc/nginx/sites-available/taler-${SUBDOMAIN}" << EOF
-server {
-    listen 80;
-    server_name ${FULL_DOMAIN};
-    
-    location / {
-        proxy_pass http://localhost:${FRONTEND_PORT};
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-
-    location = /webui {
-        return 301 /webui/;
-    }
-    
-    location /webui/ {
-        proxy_pass http://localhost:${MERCHANT_PORT}/webui/;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header X-Forwarded-Prefix /webui;
-        proxy_set_header Authorization \$http_authorization;
-        proxy_redirect http://localhost:${MERCHANT_PORT}/webui/ /webui/;
-        proxy_redirect http://localhost:${MERCHANT_PORT}/ /webui/;
-        proxy_redirect /webui/ /webui/;
-        proxy_redirect webui/ /webui/;
-    }
-
-    location /private/ {
-        proxy_pass http://localhost:${MERCHANT_PORT}/private/;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header Authorization \$http_authorization;
-        
-
-    # Merchant /config for payments (returns taler-merchant)
-    location /config {
-        proxy_pass http://localhost:${MERCHANT_PORT}/config;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header Authorization \$http_authorization;
-    }
-    }
-
-    # Bank /bank/config for wallet withdrawal (returns taler-corebank)
-    location /bank/config {
-        proxy_pass http://localhost:${BANK_PORT}/config;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header Authorization \$http_authorization;
-        
-    }
-
-    location /exchange/ {
-        proxy_pass http://localhost:${EXCHANGE_PORT}/;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_redirect http://localhost:${EXCHANGE_PORT}/ /exchange/;
-    }
-
-    # Libeufin Sandbox Bank
-    location /bank/ {
-        proxy_pass http://localhost:${BANK_PORT}/;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_redirect http://localhost:${BANK_PORT}/ /bank/;
-    }
-}
-EOF
-    sudo ln -sf "/etc/nginx/sites-available/taler-${SUBDOMAIN}" "/etc/nginx/sites-enabled/"
-    sudo nginx -t && sudo systemctl reload nginx
+    echo "Keeping HTTP-only configuration (SSL not available)"
     BASE_URL="http://${FULL_DOMAIN}"
 fi
 
