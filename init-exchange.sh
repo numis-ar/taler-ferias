@@ -79,6 +79,17 @@ fi
 echo "Initializing exchange database schema..."
 taler-exchange-dbinit -c "$CONF_FILE" 2>&1 || echo "DB init may have already been done"
 
+# Add wire account early (before exchange starts)
+echo "Setting up wire account..."
+sleep 2
+PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_exchange <<EOSQL 2>/dev/null || true
+-- Check if table exists and insert wire account
+INSERT INTO exchange.wire_accounts (payto_uri, master_sig, is_active, last_alert, debit_restrictions, credit_restrictions)
+VALUES ('payto://x-taler-bank/libeufin-bank/exchange?receiver-name=Exchange', '\x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000', true, 0, '{}'::jsonb, '{}'::jsonb)
+ON CONFLICT (payto_uri) DO UPDATE SET is_active = true;
+EOSQL
+echo "Wire account setup complete"
+
 # Wait for libeufin-bank
 echo "Waiting for libeufin-bank..."
 for i in {1..30}; do
