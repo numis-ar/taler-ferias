@@ -17,24 +17,26 @@ services:
     networks:
       - taler-network
 
-  # Taler Fakebank - Simple bank simulator for testing
-  fakebank:
-    build:
-      context: .
-      dockerfile: Dockerfile.fakebank
-    container_name: taler-fakebank
+  # Libeufin Sandbox - Simulated bank with real authentication
+  libeufin-sandbox:
+    image: registry.gitlab.com/libeufin/libeufin-sandbox:latest
+    container_name: taler-sandbox
     ports:
       - "8082"
     environment:
-      - BANK_PORT=8082
-      - BANK_CURRENCY=KUDOS
-      - BANK_EXCHANGE_ACCOUNT=exchange
-      - BANK_EXCHANGE_PASSWORD=exchange_password
-    volumes:
-      - ./fake-bank.py:/app/fake-bank.py:ro
-    command: python3 /app/fake-bank.py
+      - LIBEUFIN_SANDBOX_ADMIN_PASSWORD=sandboxadmin
+      - LIBEUFIN_SANDBOX_CURRENCY=KUDOS
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - taler-network
+    command: >
+      sh -c "
+        echo 'Waiting for postgres...' &&
+        sleep 5 &&
+        libeufin-sandbox serve --port 8082
+      "
 
   taler-exchange:
     build:
@@ -44,7 +46,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      fakebank:
+      libeufin-sandbox:
         condition: service_started
     ports:
       - "8081"
@@ -55,7 +57,6 @@ services:
     volumes:
       - ./exchange-local.conf:/etc/taler/taler.conf:ro
       - exchange_data:/var/lib/taler-exchange
-    # Use the ENTRYPOINT from Dockerfile
     networks:
       - taler-network
 
@@ -69,7 +70,7 @@ services:
         condition: service_healthy
       taler-exchange:
         condition: service_started
-      fakebank:
+      libeufin-sandbox:
         condition: service_started
     ports:
       - "9966"
@@ -97,7 +98,7 @@ services:
           PGPASSWORD=talerpassword psql -h postgres -U taler -c "CREATE DATABASE taler_merchant;"
         fi
         
-        # Initialize database schema (must succeed before creating admin)
+        # Initialize database schema
         echo 'Initializing merchant database schema...'
         MAX_TRIES=5
         TRY=0
@@ -114,18 +115,19 @@ services:
         # Verify schema exists
         SCHEMA_EXISTS=$$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -tc "SELECT 1 FROM information_schema.schemata WHERE schema_name = 'merchant'" 2>/dev/null | grep -c 1 || echo 0)
         if [ "$$SCHEMA_EXISTS" = "0" ]; then
-          echo 'ERROR: Failed to initialize merchant schema after $$MAX_TRIES attempts'
+          echo 'ERROR: Failed to initialize merchant schema'
           echo 'Checking database state...'
           PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -c "\dt" 2>&1 || true
-          echo 'Trying one more time with fresh database...'
+          echo 'Trying one more time...'
           taler-merchant-dbinit -c /etc/taler/taler.conf --force 2>&1 || true
         fi
         
+        # Create admin instance
         echo 'Creating/Updating admin instance...'
         TALER_MERCHANT_PASSWORD=adminpassword taler-merchant-passwd \
           -c /etc/taler/taler.conf \
           --instance=admin 2>&1 || {
-            echo 'INFO: taler-merchant-passwd returned non-zero (may be OK if admin exists or DB issue)'
+            echo 'INFO: taler-merchant-passwd returned non-zero (may be OK if admin exists)'
           }
         
         # Wait for exchange to be ready
@@ -139,7 +141,7 @@ services:
           sleep 2
         done
         
-        # Run merchant initialization (configure local exchange)
+        # Run merchant initialization
         echo 'Running merchant initialization...'
         bash /tmp/init-merchant.sh || echo 'Merchant init completed with warnings'
         

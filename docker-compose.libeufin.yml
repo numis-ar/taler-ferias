@@ -1,0 +1,53 @@
+services:
+  # Libeufin Sandbox - Simulated bank with real auth
+  libeufin-sandbox:
+    image: registry.gitlab.com/libeufin/libeufin-sandbox:latest
+    container_name: taler-sandbox
+    ports:
+      - "8082"
+    environment:
+      - LIBEUFIN_SANDBOX_DB_CONNECTION=jdbc:postgresql://postgres/libeufin_sandbox?user=taler&password=talerpassword
+      - LIBEUFIN_SANDBOX_ADMIN_PASSWORD=sandboxadmin
+      - LIBEUFIN_SANDBOX_CURRENCY=KUDOS
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - libeufin_sandbox_data:/var/lib/libeufin-sandbox
+    networks:
+      - taler-network
+    command: >
+      sh -c "
+        echo 'Waiting for postgres...' &&
+        sleep 5 &&
+        libeufin-sandbox serve --port 8082
+      "
+
+  # Libeufin Nexus - Bank integration layer
+  libeufin-nexus:
+    image: registry.gitlab.com/libeufin/libeufin-nexus:latest
+    container_name: taler-nexus
+    ports:
+      - "8083"
+    environment:
+      - LIBEUFIN_NEXUS_DB_CONNECTION=jdbc:postgresql://postgres/libeufin_nexus?user=taler&password=talerpassword
+      - LIBEUFIN_NEXUS_ADMIN_PASSWORD=nexusadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+      libeufin-sandbox:
+        condition: service_started
+    volumes:
+      - libeufin_nexus_data:/var/lib/libeufin-nexus
+    networks:
+      - taler-network
+    command: >
+      sh -c "
+        echo 'Waiting for postgres...' &&
+        sleep 5 &&
+        libeufin-nexus serve --port 8083
+      "
+
+volumes:
+  libeufin_sandbox_data:
+  libeufin_nexus_data:

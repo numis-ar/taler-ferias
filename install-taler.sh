@@ -87,8 +87,8 @@ printf '%s\n' "services:
     volumes:
       - postgres_data_${SUBDOMAIN}:/var/lib/postgresql/data
     
-  fakebank:
-    container_name: taler-fakebank-${SUBDOMAIN}
+  libeufin-sandbox:
+    container_name: taler-sandbox-${SUBDOMAIN}
     environment:
       - BANK_CURRENCY=KUDOS
     ports:
@@ -127,7 +127,7 @@ volumes:
   postgres_data_${SUBDOMAIN}:
   merchant_data_${SUBDOMAIN}:
   exchange_data_${SUBDOMAIN}:
-  fakebank_data_${SUBDOMAIN}:
+  libeufin_sandbox_data_${SUBDOMAIN}:
 " > docker-compose.override.yml
 
 echo "Created docker-compose.override.yml"
@@ -261,7 +261,7 @@ server {
         proxy_set_header Connection "upgrade";
     }
 
-    # Libeufin Bank
+    # Libeufin Sandbox Bank
     location /bank/ {
         proxy_pass http://localhost:${BANK_PORT}/;
         proxy_set_header Host \$host;
@@ -272,15 +272,6 @@ server {
         
         # Handle bank's own redirects
         proxy_redirect / /bank/;
-    }
-
-    # Bank API endpoints (some use different paths)
-    location /taler-bank-integration/ {
-        proxy_pass http://localhost:${BANK_PORT}/taler-bank-integration/;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
 EOF
@@ -367,6 +358,7 @@ server {
         proxy_redirect http://localhost:${EXCHANGE_PORT}/ /exchange/;
     }
 
+    # Libeufin Sandbox Bank
     location /bank/ {
         proxy_pass http://localhost:${BANK_PORT}/;
         proxy_set_header Host \$host;
@@ -374,14 +366,6 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_redirect http://localhost:${BANK_PORT}/ /bank/;
-    }
-
-    location /taler-bank-integration/ {
-        proxy_pass http://localhost:${BANK_PORT}/taler-bank-integration/;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
 EOF
@@ -479,6 +463,7 @@ server {
         proxy_redirect http://localhost:${EXCHANGE_PORT}/ /exchange/;
     }
 
+    # Libeufin Sandbox Bank
     location /bank/ {
         proxy_pass http://localhost:${BANK_PORT}/;
         proxy_set_header Host \$host;
@@ -486,14 +471,6 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_redirect http://localhost:${BANK_PORT}/ /bank/;
-    }
-
-    location /taler-bank-integration/ {
-        proxy_pass http://localhost:${BANK_PORT}/taler-bank-integration/;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
 EOF
