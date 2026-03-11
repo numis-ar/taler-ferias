@@ -157,9 +157,9 @@ BASE_URL = https://${FULL_DOMAIN}/merchant/
 [merchantdb-postgres]
 CONFIG = postgres://taler:talerpassword@postgres:5432/taler_merchant
 
-# Use the local exchange
+# Use the local exchange (internal Docker network)
 [merchant-exchange-kudos]
-EXCHANGE_BASE_URL = https://${FULL_DOMAIN}/exchange/
+EXCHANGE_BASE_URL = http://taler-exchange:8081/
 CURRENCY = KUDOS
 EOF
 
