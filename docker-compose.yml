@@ -23,8 +23,7 @@ services:
       context: .
       dockerfile: Dockerfile.libeufin
     container_name: taler-bank
-    ports:
-      - "8080"
+    # Ports defined in docker-compose.override.yml
     environment:
       - LIBEUFIN_BANK_ADMIN_PASSWORD=bankadmin
       - LIBEUFIN_BANK_CURRENCY=KUDOS
@@ -45,8 +44,7 @@ services:
         condition: service_healthy
       libeufin-bank:
         condition: service_started
-    ports:
-      - "8081"
+    # Ports defined in docker-compose.override.yml
     environment:
       - TALER_CONFIG=/etc/taler/taler.conf
       - DB_PASSWORD=talerpassword
@@ -69,8 +67,7 @@ services:
         condition: service_started
       libeufin-bank:
         condition: service_started
-    ports:
-      - "9966"
+    # Ports defined in docker-compose.override.yml
     environment:
       - TALER_CONFIG=/etc/taler/taler.conf
       - EXCHANGE_URL=http://taler-exchange:8081
@@ -157,8 +154,7 @@ services:
   demo-frontend:
     image: nginx:alpine
     container_name: taler-demo-frontend
-    ports:
-      - "80"
+    # Ports defined in docker-compose.override.yml
     volumes:
       - ./demo-frontend:/usr/share/nginx/html:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
