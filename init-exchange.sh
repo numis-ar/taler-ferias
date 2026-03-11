@@ -58,16 +58,35 @@ for i in {1..30}; do
     sleep 2
 done
 
+# Check multiple possible locations for master key
+MASTER_KEY_FILE="/var/lib/taler-exchange/master.priv"
+if [ ! -f "$MASTER_KEY_FILE" ]; then
+    # Try alternative locations
+    for alt_path in "$HOME/.local/share/taler-exchange/master.priv" "/root/.local/share/taler-exchange/master.priv"; do
+        if [ -f "$alt_path" ]; then
+            echo "Found master key at alternate location: $alt_path"
+            MASTER_KEY_FILE="$alt_path"
+            break
+        fi
+    done
+fi
+
 # Generate master key using 'setup' command
 # This creates master.priv and outputs the public key
-if [ ! -f /var/lib/taler-exchange/master.priv ]; then
+if [ ! -f "$MASTER_KEY_FILE" ]; then
     echo "Generating exchange master key with 'taler-exchange-offline setup'..."
+    echo "Config file location: $CONF_FILE"
+    
     # Run setup and capture the public key output
     SETUP_OUTPUT=$(taler-exchange-offline -c "$CONF_FILE" setup 2>&1)
     SETUP_STATUS=$?
     echo "Setup command exit status: $SETUP_STATUS"
     echo "Setup output:"
     echo "$SETUP_OUTPUT"
+    
+    # Check where the key was created
+    echo "Checking for master key in standard locations..."
+    find /var/lib/taler-exchange ~/.local/share/taler-exchange -name "master.priv" 2>/dev/null || echo "(not found yet)"
     
     # The setup command outputs the public key directly
     # Look for a line that looks like: YE6Q6TR1ED... (base32, 52 chars)
@@ -86,17 +105,17 @@ if [ ! -f /var/lib/taler-exchange/master.priv ]; then
         echo "$SETUP_OUTPUT" | grep -i "public\|master\|key" || true
     fi
 else
-    echo "Master key already exists at /var/lib/taler-exchange/master.priv"
+    echo "Master key already exists at: $MASTER_KEY_FILE"
 fi
 
 # Always try to extract and add MASTER_PUBLIC_KEY if missing
 if ! grep -q "^MASTER_PUBLIC_KEY" "$CONF_FILE"; then
     if [ -z "$MASTER_PUB" ]; then
         # Try to extract from existing key file or info command
-        if [ -f /var/lib/taler-exchange/master.priv ]; then
-            echo "Trying to extract public key from master.priv..."
+        if [ -f "$MASTER_KEY_FILE" ]; then
+            echo "Trying to extract public key from $MASTER_KEY_FILE..."
             # The master.priv might contain the public key in comments or as a separate entry
-            MASTER_PUB=$(cat /var/lib/taler-exchange/master.priv 2>/dev/null | tr ' ' '\n' | grep -E '^[A-Z2-7]{52}$' | head -1 || echo "")
+            MASTER_PUB=$(cat "$MASTER_KEY_FILE" 2>/dev/null | tr ' ' '\n' | grep -E '^[A-Z2-7]{52}$' | head -1 || echo "")
         fi
         
         if [ -z "$MASTER_PUB" ]; then
@@ -133,10 +152,15 @@ echo "Exchange key status:"
 ls -la /var/lib/taler-exchange/ 2>/dev/null || echo "(directory listing failed)"
 
 # Show master.priv contents if exists
-if [ -f /var/lib/taler-exchange/master.priv ]; then
+if [ -f "$MASTER_KEY_FILE" ]; then
     echo ""
-    echo "Contents of master.priv:"
-    cat /var/lib/taler-exchange/master.priv
+    echo "Contents of $MASTER_KEY_FILE:"
+    cat "$MASTER_KEY_FILE"
+else
+    echo ""
+    echo "WARNING: master.priv not found at expected location"
+    echo "Searching for master.priv in home directory..."
+    find ~ -name "master.priv" 2>/dev/null || echo "(not found)"
 fi
 
 # Check if MASTER_PUBLIC_KEY is now in config
