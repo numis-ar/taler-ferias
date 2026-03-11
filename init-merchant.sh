@@ -61,7 +61,7 @@ PGPASSWORD=talerpassword psql -h postgres -U taler -d "$MERCHANT_DB" <<EOSQL 2>/
     -- Ensure admin instance has wire info configured
     UPDATE merchant.merchant_instances 
     SET wire_type = 'x-taler-bank',
-        wire_details = '{"bank_uri": "http://fakebank:8082/", "account": "merchant"}'::jsonb
+        wire_details = '{"bank_uri": "http://libeufin-bank:8080/", "account": "merchant"}'::jsonb
     WHERE merchant_id = 'admin' 
     AND (wire_type IS NULL OR wire_type = '');
     
@@ -92,4 +92,4 @@ EOSQL
 echo "=== Merchant configuration complete ==="
 echo ""
 echo "Local exchange configured: $EXCHANGE_URL"
-echo "Bank wire gateway: http://fakebank:8082/"
+echo "Bank wire gateway: http://libeufin-bank:8080/"

@@ -79,15 +79,15 @@ fi
 echo "Initializing exchange database schema..."
 taler-exchange-dbinit -c "$CONF_FILE" 2>&1 || echo "DB init may have already been done"
 
-# Wait for fakebank
-echo "Waiting for fakebank..."
+# Wait for libeufin-bank
+echo "Waiting for libeufin-bank..."
 for i in {1..30}; do
-    if curl -sf http://fakebank:8082/healthz >/dev/null 2>&1 || \
-       curl -sf http://fakebank:8082/accounts >/dev/null 2>&1; then
-        echo "Fakebank is ready"
+    if curl -sf http://libeufin-bank:8080/healthz >/dev/null 2>&1 || \
+       curl -sf http://libeufin-bank:8080/config >/dev/null 2>&1; then
+        echo "Libeufin-bank is ready"
         break
     fi
-    echo "  Waiting for fakebank... ($i/30)"
+    echo "  Waiting for libeufin-bank... ($i/30)"
     sleep 2
 done
 
