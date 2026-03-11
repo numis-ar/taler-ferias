@@ -22,15 +22,27 @@ RUN apt-get update && apt-get install -y \
     libeufin-common \
     && rm -rf /var/lib/apt/lists/*
 
-# Create data directory
-RUN mkdir -p /var/lib/libeufin-bank
+# Create data directory and user
+RUN mkdir -p /var/lib/libeufin-bank && \
+    useradd -r -s /bin/false libeufin-bank 2>/dev/null || true
+
+# Create config file
+RUN mkdir -p /etc/libeufin && \
+    echo '[libeufin-bank]' > /etc/libeufin/bank.conf && \
+    echo 'CURRENCY = KUDOS' >> /etc/libeufin/bank.conf && \
+    echo 'BASE_URL = http://localhost:8080/' >> /etc/libeufin/bank.conf && \
+    echo '' >> /etc/libeufin/bank.conf && \
+    echo '[libeufin-bankdb-postgres]' >> /etc/libeufin/bank.conf && \
+    echo 'CONFIG = jdbc:postgresql://postgres:5432/libeufin_bank?user=taler&password=talerpassword' >> /etc/libeufin/bank.conf
 
 # Environment variables
 ENV LIBEUFIN_BANK_CURRENCY=KUDOS
-ENV LIBEUFIN_BANK_PORT=8082
 
 # Default port
 EXPOSE 8082
 
-# Start libeufin bank
-CMD ["libeufin-bank", "serve", "--port", "8082"]
+# Start script
+COPY libeufin-start.sh /usr/local/bin/libeufin-start.sh
+RUN chmod +x /usr/local/bin/libeufin-start.sh
+
+CMD ["/usr/local/bin/libeufin-start.sh"]

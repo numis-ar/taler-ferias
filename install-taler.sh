@@ -75,7 +75,7 @@ PORT_OFFSET=$(echo "$SUBDOMAIN" | cksum | cut -d' ' -f1 | awk '{print $1 % 1000}
 MERCHANT_PORT=$((9966 + PORT_OFFSET))
 FRONTEND_PORT=$((8080 + PORT_OFFSET))
 EXCHANGE_PORT=$((8081 + PORT_OFFSET))
-BANK_PORT=$((8082 + PORT_OFFSET))
+BANK_PORT=$((8080 + PORT_OFFSET))
 
 echo "Using ports: Frontend=${FRONTEND_PORT}, Merchant=${MERCHANT_PORT}, Exchange=${EXCHANGE_PORT}, Bank=${BANK_PORT}"
 
