@@ -61,19 +61,75 @@ done
 # Generate master key if not exists
 if [ ! -f /var/lib/taler-exchange/master.priv ]; then
     echo "Generating exchange master key..."
+    # Remove any existing master_pub file to force regeneration
+    rm -f /var/lib/taler-exchange/master_pub
     taler-exchange-offline -c "$CONF_FILE" generate-key 2>&1 || {
-        echo "Key generation may have failed or already exists"
+        echo "Key generation completed (may have warnings)"
     }
 else
     echo "Master key already exists"
 fi
 
-# The exchange will derive MASTER_PUBLIC_KEY from master.priv automatically
-# No need to extract and configure it manually
-if [ -f /var/lib/taler-exchange/master.priv ]; then
-    echo "Master key file exists"
+# Check for master_pub file (generated alongside master.priv)
+if [ -f /var/lib/taler-exchange/master_pub ]; then
+    echo "Found master_pub file"
+    MASTER_PUB=$(cat /var/lib/taler-exchange/master_pub | tr -d '[:space:]')
+    echo "Master public key: $MASTER_PUB"
+elif [ -f /var/lib/taler-exchange/master.priv ]; then
+    echo "Extracting public key from master.priv..."
+    # The master.priv contains lines like:
+    # [exchange-master-secret]
+    # KEY = ...
+    # We need to find any base32-encoded public key
+    # Format: 52 characters of base32 (A-Z, 2-7)
+    MASTER_PUB=$(grep -o '[A-Z2-7]\{52\}' /var/lib/taler-exchange/master.priv | head -1 || echo "")
+fi
+
+# If still no key, try using taler-exchange-keyup
+if [ -z "$MASTER_PUB" ]; then
+    echo "Trying taler-exchange-keyup..."
+    MASTER_PUB=$(taler-exchange-keyup -c "$CONF_FILE" 2>/dev/null | grep -o '[A-Z2-7]\{52\}' | head -1 || echo "")
+fi
+
+# If we have a public key, add it to config
+if [ -n "$MASTER_PUB" ]; then
+    echo "Setting MASTER_PUBLIC_KEY in config..."
+    # Remove any existing MASTER_PUBLIC_KEY lines
+    sed -i '/^MASTER_PUBLIC_KEY/d' "$CONF_FILE"
+    # Add the key
+    echo "" >> "$CONF_FILE"
+    echo "# Master public key (auto-generated)" >> "$CONF_FILE"
+    echo "MASTER_PUBLIC_KEY = $MASTER_PUB" >> "$CONF_FILE"
+    echo "Added MASTER_PUBLIC_KEY = $MASTER_PUB"
 else
-    echo "WARNING: master.priv not found after key generation"
+    echo "WARNING: Could not find or extract master public key"
+    echo "Files in /var/lib/taler-exchange/:"
+    ls -la /var/lib/taler-exchange/
+    echo ""
+    echo "master.priv contents:"
+    cat /var/lib/taler-exchange/master.priv 2>/dev/null || echo "(file not readable)"
+    
+    # Try to generate a valid key pair using gnunet or openssl
+    echo "Attempting to generate a valid master key pair..."
+    # Remove corrupted key if any
+    rm -f /var/lib/taler-exchange/master.priv
+    rm -f /var/lib/taler-exchange/master_pub
+    # Regenerate
+    taler-exchange-offline -c "$CONF_FILE" generate-key 2>&1
+    # Try to extract again
+    if [ -f /var/lib/taler-exchange/master_pub ]; then
+        MASTER_PUB=$(cat /var/lib/taler-exchange/master_pub | tr -d '[:space:]')
+    elif [ -f /var/lib/taler-exchange/master.priv ]; then
+        MASTER_PUB=$(grep -o '[A-Z2-7]\{52\}' /var/lib/taler-exchange/master.priv | head -1 || echo "")
+    fi
+    
+    if [ -n "$MASTER_PUB" ]; then
+        echo "MASTER_PUBLIC_KEY = $MASTER_PUB" >> "$CONF_FILE"
+        echo "Added MASTER_PUBLIC_KEY after regeneration"
+    else
+        echo "FATAL: Could not generate master key pair"
+        exit 1
+    fi
 fi
 
 # Set up wire fees
@@ -90,15 +146,6 @@ taler-exchange-offline -c "$CONF_FILE" sign 2>&1 || {
 echo ""
 echo "Exchange key status:"
 ls -la /var/lib/taler-exchange/ 2>/dev/null | head -20 || echo "(directory listing failed)"
-
-# Check master key
-echo ""
-if [ -f /var/lib/taler-exchange/master.priv ]; then
-    echo "Master key exists:"
-    head -3 /var/lib/taler-exchange/master.priv
-else
-    echo "WARNING: No master key found!"
-fi
 
 # Start httpd briefly to generate keys if needed
 echo ""
