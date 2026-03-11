@@ -178,37 +178,54 @@ sleep 10
 echo ""
 echo "=== Configuring Exchange (offline operations) ==="
 
+# Verify master key exists
+MASTER_KEY_FILE="/root/.local/share/taler-exchange/offline/master.priv"
+echo "Checking master key at $MASTER_KEY_FILE..."
+if [ -f "$MASTER_KEY_FILE" ]; then
+    echo "Master key file exists, size: $(wc -c < "$MASTER_KEY_FILE") bytes"
+    ls -la "$MASTER_KEY_FILE"
+else
+    echo "ERROR: Master key file not found!"
+fi
+
+# Show internal config
+echo "Internal config MASTER_PUBLIC_KEY:"
+grep "^MASTER_PUBLIC_KEY" "$INTERNAL_CONF" || echo "WARNING: No MASTER_PUBLIC_KEY in internal config!"
+
 # Bank payto URL - MUST match [exchange-account-1] PAYTO_URI in config
 BANK_PAYTO_URL="payto://x-taler-bank/libeufin-bank/exchange?receiver-name=Exchange"
 echo "Bank payto URL: $BANK_PAYTO_URL"
 
 # Enable wire account - generate signed command and upload
-echo "Enabling wire account..."
-taler-exchange-offline -c "$INTERNAL_CONF" enable-account "$BANK_PAYTO_URL" > /tmp/enable-account.json 2>&1
+echo ""
+echo "Running enable-account command..."
+taler-exchange-offline -c "$INTERNAL_CONF" enable-account "$BANK_PAYTO_URL" 2>&1 | tee /tmp/enable-account.json
 ENABLE_EXIT=$?
 
+echo ""
 echo "enable-account exit code: $ENABLE_EXIT"
-if [ -s /tmp/enable-account.json ]; then
-    echo "enable-account output ($(wc -c < /tmp/enable-account.json) bytes):"
-    head -20 /tmp/enable-account.json
-    
-    # Check if it's valid JSON
-    if head -1 /tmp/enable-account.json | grep -q '{'; then
-        echo "Uploading enable-account command (with retry)..."
-        for retry in 1 2 3; do
-            if taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/enable-account.json 2>&1; then
-                echo "Upload successful!"
-                break
-            else
-                echo "Upload failed, retry $retry/3..."
+echo "Output file size: $(wc -c < /tmp/enable-account.json 2>/dev/null || echo 0) bytes"
+
+if [ -s /tmp/enable-account.json ] && head -1 /tmp/enable-account.json | grep -q '{'; then
+    echo "Valid JSON detected, uploading..."
+    for retry in 1 2 3; do
+        echo "Upload attempt $retry/3..."
+        if taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/enable-account.json 2>&1; then
+            echo "Upload successful!"
+            break
+        else
+            UPLOAD_EXIT=$?
+            echo "Upload failed with exit code $UPLOAD_EXIT"
+            if [ $retry -lt 3 ]; then
+                echo "Retrying in 3 seconds..."
                 sleep 3
             fi
-        done
-    else
-        echo "enable-account did not produce valid JSON"
-    fi
+        fi
+    done
 else
-    echo "No enable-account output generated"
+    echo "ERROR: enable-account did not produce valid JSON output"
+    echo "Raw output:"
+    cat /tmp/enable-account.json
 fi
 
 # Wait for account to be processed
@@ -216,47 +233,31 @@ echo "Waiting for wire account to be processed..."
 sleep 5
 
 # Set up wire fees (needed for /keys to work)
+echo ""
 echo "Setting up wire fees..."
-taler-exchange-offline -c "$INTERNAL_CONF" wire-fee 2026 x-taler-bank KUDOS:0.01 KUDOS:0.01 > /tmp/wire-fee.json 2>&1
+taler-exchange-offline -c "$INTERNAL_CONF" wire-fee now x-taler-bank KUDOS:0 KUDOS:0 2>&1 | tee /tmp/wire-fee.json
 WIRE_EXIT=$?
 
 echo "wire-fee exit code: $WIRE_EXIT"
 if [ -s /tmp/wire-fee.json ] && head -1 /tmp/wire-fee.json | grep -q '{'; then
-    echo "Uploading wire fees (with retry)..."
-    for retry in 1 2 3; do
-        if taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/wire-fee.json 2>&1; then
-            echo "Wire fee upload successful!"
-            break
-        else
-            echo "Wire fee upload failed, retry $retry/3..."
-            sleep 2
-        fi
-    done
+    echo "Uploading wire fees..."
+    taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/wire-fee.json 2>&1
 else
-    echo "No wire-fee output or invalid JSON"
-    cat /tmp/wire-fee.json 2>/dev/null || true
+    echo "No wire-fee JSON output"
 fi
 
 # Set up global fees
+echo ""
 echo "Setting up global fees..."
-taler-exchange-offline -c "$INTERNAL_CONF" global-fee 2026 KUDOS:0.01 KUDOS:0.01 KUDOS:0.01 1d 1y 100 > /tmp/global-fee.json 2>&1
+taler-exchange-offline -c "$INTERNAL_CONF" global-fee now KUDOS:0 KUDOS:0 KUDOS:0 1d 1y 100 2>&1 | tee /tmp/global-fee.json
 GLOBAL_EXIT=$?
 
 echo "global-fee exit code: $GLOBAL_EXIT"
 if [ -s /tmp/global-fee.json ] && head -1 /tmp/global-fee.json | grep -q '{'; then
-    echo "Uploading global fees (with retry)..."
-    for retry in 1 2 3; do
-        if taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/global-fee.json 2>&1; then
-            echo "Global fee upload successful!"
-            break
-        else
-            echo "Global fee upload failed, retry $retry/3..."
-            sleep 2
-        fi
-    done
+    echo "Uploading global fees..."
+    taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/global-fee.json 2>&1
 else
-    echo "No global-fee output or invalid JSON"
-    cat /tmp/global-fee.json 2>/dev/null || true
+    echo "No global-fee JSON output"
 fi
 
 # Wait for exchange to process everything
