@@ -34,15 +34,6 @@ export FULL_DOMAIN
 export SUBDOMAIN
 export DOMAIN
 
-# Create .env file for docker-compose variable substitution
-cat > .env << EOF
-FULL_DOMAIN=${FULL_DOMAIN}
-SUBDOMAIN=${SUBDOMAIN}
-DOMAIN=${DOMAIN}
-EOF
-
-echo "Created .env file with FULL_DOMAIN=${FULL_DOMAIN}"
-
 # Check prerequisites
 command -v docker >/dev/null 2>&1 || { echo "Docker required but not installed. Aborting."; exit 1; }
 
@@ -69,6 +60,15 @@ fi
 echo "Cloning repository to ${INSTALL_DIR}..."
 git clone https://github.com/numis-ar/taler-ferias.git "$INSTALL_DIR"
 cd "$INSTALL_DIR"
+
+# Create .env file for docker-compose variable substitution (AFTER cd to install dir)
+cat > .env << EOF
+FULL_DOMAIN=${FULL_DOMAIN}
+SUBDOMAIN=${SUBDOMAIN}
+DOMAIN=${DOMAIN}
+EOF
+
+echo "Created .env file with FULL_DOMAIN=${FULL_DOMAIN}"
 
 # 2. Generate unique ports based on subdomain hash (to avoid conflicts between instances)
 # Use high port range (30000+) to avoid conflicts
