@@ -97,25 +97,35 @@ services:
           PGPASSWORD=talerpassword psql -h postgres -U taler -c "CREATE DATABASE taler_merchant;"
         fi
         
-        # Check if schema exists
-        SCHEMA_EXISTS=$$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -tc "SELECT 1 FROM information_schema.schemata WHERE schema_name = 'merchant'" 2>/dev/null | grep -c 1 || echo 0)
+        # Initialize database schema (must succeed before creating admin)
+        echo 'Initializing merchant database schema...'
+        MAX_TRIES=5
+        TRY=0
+        while [ $$TRY -lt $$MAX_TRIES ]; do
+          if taler-merchant-dbinit -c /etc/taler/taler.conf 2>&1; then
+            echo 'Database initialized successfully'
+            break
+          fi
+          TRY=$$((TRY + 1))
+          echo "DB init attempt $$TRY/$$MAX_TRIES failed, retrying..."
+          sleep 3
+        done
         
+        # Verify schema exists
+        SCHEMA_EXISTS=$$(PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -tc "SELECT 1 FROM information_schema.schemata WHERE schema_name = 'merchant'" 2>/dev/null | grep -c 1 || echo 0)
         if [ "$$SCHEMA_EXISTS" = "0" ]; then
-          echo 'Initializing merchant database schema...'
-          taler-merchant-dbinit -c /etc/taler/taler.conf 2>&1 || {
-            echo 'WARNING: DB init failed, retrying...'
-            sleep 2
-            taler-merchant-dbinit -c /etc/taler/taler.conf 2>&1 || true
-          }
-        else
-          echo 'Merchant schema already exists'
+          echo 'ERROR: Failed to initialize merchant schema after $$MAX_TRIES attempts'
+          echo 'Checking database state...'
+          PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_merchant -c "\dt" 2>&1 || true
+          echo 'Trying one more time with fresh database...'
+          taler-merchant-dbinit -c /etc/taler/taler.conf --force 2>&1 || true
         fi
         
         echo 'Creating/Updating admin instance...'
         TALER_MERCHANT_PASSWORD=adminpassword taler-merchant-passwd \
           -c /etc/taler/taler.conf \
           --instance=admin 2>&1 || {
-            echo 'INFO: taler-merchant-passwd returned non-zero (may be OK if admin exists)'
+            echo 'INFO: taler-merchant-passwd returned non-zero (may be OK if admin exists or DB issue)'
           }
         
         # Wait for exchange to be ready
