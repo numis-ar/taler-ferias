@@ -9,21 +9,25 @@ EXCHANGE_URL="http://taler-exchange:8081"
 MERCHANT_DB="taler_merchant"
 
 # Wait for exchange to be ready
-echo "Fetching exchange keys..."
-for i in {1..60}; do
-    if curl -sf "$EXCHANGE_URL/keys" >/dev/null 2>&1; then
-        echo "Exchange keys available"
-        break
+echo "Fetching exchange keys from $EXCHANGE_URL..."
+for i in {1..90}; do
+    KEYS_RESPONSE=$(curl -sf "$EXCHANGE_URL/keys" 2>/dev/null || echo "")
+    if [ -n "$KEYS_RESPONSE" ]; then
+        echo "Exchange responded"
+        # Check if it has master_public_key
+        MASTER_KEY=$(echo "$KEYS_RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin).get('master_public_key', ''))" 2>/dev/null || echo "")
+        if [ -n "$MASTER_KEY" ] && [ "$MASTER_KEY" != "null" ]; then
+            echo "Exchange master key found: ${MASTER_KEY:0:20}..."
+            break
+        fi
     fi
-    echo "  Waiting for exchange keys... ($i/60)"
+    echo "  Waiting for exchange keys... ($i/90)"
     sleep 2
 done
 
-# Get the master public key from exchange
-MASTER_KEY=$(curl -sf "$EXCHANGE_URL/keys" 2>/dev/null | python3 -c "import sys, json; print(json.load(sys.stdin).get('master_public_key', ''))" 2>/dev/null || echo "")
-
 if [ -z "$MASTER_KEY" ] || [ "$MASTER_KEY" = "null" ]; then
-    echo "WARNING: Could not get master key from exchange. Using placeholder."
+    echo "WARNING: Could not get master key from exchange after 180 seconds."
+    echo "Exchange response was: $KEYS_RESPONSE"
     MASTER_KEY="PLACEHOLDER_KEY"
 fi
 
