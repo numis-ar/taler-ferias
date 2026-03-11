@@ -150,11 +150,11 @@ echo "Starting httpd for configuration..."
 taler-exchange-httpd -c "$INTERNAL_CONF" &
 HTTPD_PID=$!
 
-# Wait for httpd to be fully ready
-echo "Waiting for httpd to be fully ready..."
+# Wait for httpd to be running (not necessarily /keys)
+echo "Waiting for httpd to be running..."
 for i in {1..60}; do
-    if curl -sf http://localhost:8081/keys >/dev/null 2>&1; then
-        echo "Httpd is ready and serving /keys!"
+    if curl -sf http://localhost:8081/ >/dev/null 2>&1 || curl -sf http://localhost:8081/config >/dev/null 2>&1; then
+        echo "Httpd is running!"
         break
     fi
     if ! kill -0 $HTTPD_PID 2>/dev/null; then
