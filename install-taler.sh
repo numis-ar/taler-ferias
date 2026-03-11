@@ -152,7 +152,7 @@ CURRENCY = KUDOS
 SERVE = tcp
 PORT = 9966
 DATABASE = postgres
-BASE_URL = https://${FULL_DOMAIN}/merchant/
+BASE_URL = https://${FULL_DOMAIN}/
 
 [merchantdb-postgres]
 CONFIG = postgres://taler:talerpassword@postgres:5432/taler_merchant
@@ -278,7 +278,7 @@ server {
     }
 
     # Merchant /config for payments (returns taler-merchant)
-    location /merchant/config {
+    location /config {
         proxy_pass http://localhost:${MERCHANT_PORT}/config;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$proxy_add_x_forwarded_for;
@@ -390,7 +390,7 @@ server {
     }
 
     # Merchant /config for payments (returns taler-merchant)
-    location /merchant/config {
+    location /config {
         proxy_pass http://localhost:${MERCHANT_PORT}/config;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$proxy_add_x_forwarded_for;
@@ -499,7 +499,7 @@ server {
         
 
     # Merchant /config for payments (returns taler-merchant)
-    location /merchant/config {
+    location /config {
         proxy_pass http://localhost:${MERCHANT_PORT}/config;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$proxy_add_x_forwarded_for;
