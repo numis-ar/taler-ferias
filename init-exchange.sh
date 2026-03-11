@@ -4,30 +4,22 @@ set -e
 
 echo "=== Initializing Taler Exchange ==="
 
-# Copy config to writable location and replace placeholder
-if [ -f /etc/taler/taler.conf ]; then
-    echo "Copying config to writable location..."
-    cp /etc/taler/taler.conf /tmp/taler-exchange.conf
-    
-    # Replace placeholder with actual domain
-    if [ -n "$FULL_DOMAIN" ]; then
-        echo "Configuring for domain: $FULL_DOMAIN"
-        sed -i "s|EXCHANGE_HOST_PLACEHOLDER|$FULL_DOMAIN|g" /tmp/taler-exchange.conf
-    else
-        echo "WARNING: FULL_DOMAIN not set, using placeholder value"
-        # Try to get it from elsewhere or use a default
-        FULL_DOMAIN="${HOSTNAME:-localhost}"
-        sed -i "s|EXCHANGE_HOST_PLACEHOLDER|$FULL_DOMAIN|g" /tmp/taler-exchange.conf
-    fi
-    
+# Use provided config or default
+CONF_FILE="${TALER_CONFIG:-/etc/taler/taler.conf}"
+
+# If using the copied config from docker-compose
+if [ -f /tmp/taler-exchange.conf ]; then
     CONF_FILE=/tmp/taler-exchange.conf
     export TALER_CONFIG=/tmp/taler-exchange.conf
-else
-    echo "ERROR: Source config not found at /etc/taler/taler.conf"
-    exit 1
 fi
 
 echo "Using config: $CONF_FILE"
+
+# Check if config exists and is readable
+if [ ! -f "$CONF_FILE" ]; then
+    echo "ERROR: Config file not found: $CONF_FILE"
+    exit 1
+fi
 
 # Show config content for debugging
 echo "Config BASE_URL:"
@@ -43,10 +35,10 @@ echo "PostgreSQL is ready"
 
 # Ensure exchange database exists
 echo "Checking exchange database..."
-PGPASSWORD=talerpassword psql -h postgres -U taler -tc "SELECT 1 FROM pg_database WHERE datname = 'taler_exchange'" | grep -q 1 || {
+if ! PGPASSWORD=talerpassword psql -h postgres -U taler -tc "SELECT 1 FROM pg_database WHERE datname = 'taler_exchange'" | grep -q 1; then
     echo "Creating taler_exchange database..."
     PGPASSWORD=talerpassword psql -h postgres -U taler -c "CREATE DATABASE taler_exchange;"
-}
+fi
 
 # Initialize database schema
 echo "Initializing exchange database schema..."
@@ -76,39 +68,53 @@ else
     echo "Master key already exists"
 fi
 
-# Generate denomination keys
+# Set up wire fees
 echo "Setting up wire fees..."
 taler-exchange-offline -c "$CONF_FILE" wire-fees 2024 KUDOS 0 0 0 2>&1 || true
 
-# Sign any configured denominations
+# Sign denominations if any exist
 echo "Signing denomination keys..."
 taler-exchange-offline -c "$CONF_FILE" sign 2>&1 || {
     echo "Note: sign may have warnings if no denominations ready"
 }
 
-# Try to publish key information if taler-exchange-keyup exists
-if which taler-exchange-keyup >/dev/null 2>&1; then
-    echo "Publishing exchange keys..."
-    taler-exchange-keyup -c "$CONF_FILE" 2>&1 || echo "keyup may need httpd to be running first"
-fi
-
-# Show available extensions
-echo "Exchange extensions:"
-taler-exchange-offline -c "$CONF_FILE" extensions 2>&1 || true
-
-# Show status
+# Show what we have
 echo ""
-echo "Exchange Master Public Key:"
+echo "Exchange key status:"
+ls -la /var/lib/taler-exchange/ 2>/dev/null | head -20 || echo "(directory listing failed)"
+
+# Check master key
+echo ""
 if [ -f /var/lib/taler-exchange/master.priv ]; then
-    head -5 /var/lib/taler-exchange/master.priv 2>/dev/null || echo "(key file exists)"
+    echo "Master key exists:"
+    head -3 /var/lib/taler-exchange/master.priv
 else
-    echo "(no master key file found)"
+    echo "WARNING: No master key found!"
 fi
 
-# Check keys directory
+# Start httpd briefly to generate keys if needed
 echo ""
-echo "Checking for denomination keys..."
-ls -la /var/lib/taler-exchange/ 2>/dev/null || echo "(directory listing failed)"
+echo "Starting exchange httpd to generate keys (if needed)..."
+taler-exchange-httpd -c "$CONF_FILE" &
+HTTPD_PID=$!
+
+# Wait for keys to be generated
+echo "Waiting for /keys endpoint..."
+for i in {1..60}; do
+    if curl -sf http://localhost:8081/keys >/dev/null 2>&1; then
+        echo "Keys endpoint is ready!"
+        break
+    fi
+    echo "  Waiting for keys... ($i/60)"
+    sleep 2
+done
+
+# Kill the temporary httpd
+if kill -0 $HTTPD_PID 2>/dev/null; then
+    echo "Stopping temporary httpd..."
+    kill $HTTPD_PID
+    wait $HTTPD_PID 2>/dev/null || true
+fi
 
 echo ""
 echo "=== Starting Exchange Services ==="
@@ -131,6 +137,4 @@ sleep 2
 
 echo ""
 echo "=== Starting Exchange HTTPD ==="
-echo "Note: The exchange will generate denomination keys on first startup"
-echo "This may take a few minutes..."
 exec taler-exchange-httpd -c "$CONF_FILE" -L INFO
