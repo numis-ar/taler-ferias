@@ -61,11 +61,13 @@ services:
       - |
         echo '=== Setting up Taler Exchange ==='
         
-        # Replace placeholder in config with actual domain from env
+        # Copy config to writable location and replace placeholder
+        cp /etc/taler/taler.conf /tmp/taler-exchange.conf
         if [ -n "$$FULL_DOMAIN" ]; then
-          sed -i "s|EXCHANGE_HOST_PLACEHOLDER|$$FULL_DOMAIN|g" /etc/taler/taler.conf
+          sed -i "s|EXCHANGE_HOST_PLACEHOLDER|$$FULL_DOMAIN|g" /tmp/taler-exchange.conf
           echo "Configured for domain: $$FULL_DOMAIN"
         fi
+        export TALER_CONFIG=/tmp/taler-exchange.conf
         
         until pg_isready -h postgres -U taler; do
           echo 'Waiting for PostgreSQL...'
@@ -77,7 +79,7 @@ services:
           PGPASSWORD=talerpassword psql -h postgres -U taler -c "CREATE DATABASE taler_exchange;"
         
         echo 'Initializing exchange database...'
-        taler-exchange-dbinit -c /etc/taler/taler.conf 2>&1 || true
+        taler-exchange-dbinit -c /tmp/taler-exchange.conf 2>&1 || true
         
         # Wait for fakebank to be ready
         echo 'Waiting for fakebank...'
@@ -94,28 +96,28 @@ services:
         # Generate master key if not exists
         if [ ! -f /var/lib/taler-exchange/master.priv ]; then
           echo 'Generating exchange master key...'
-          taler-exchange-offline -c /etc/taler/taler.conf generate-key 2>&1 || echo 'Key may already exist'
+          taler-exchange-offline -c /tmp/taler-exchange.conf generate-key 2>&1 || echo 'Key may already exist'
         fi
         
         # Generate denomination keys
         echo 'Generating denomination keys...'
-        taler-exchange-offline -c /etc/taler/taler.conf wire-fees 2024 KUDOS 0 0 0 2>&1 || true
-        taler-exchange-offline -c /etc/taler/taler.conf future-denominations 2>&1 || true
-        taler-exchange-offline -c /etc/taler/taler.conf sign 2>&1 || echo 'Signing may need restart'
+        taler-exchange-offline -c /tmp/taler-exchange.conf wire-fees 2024 KUDOS 0 0 0 2>&1 || true
+        taler-exchange-offline -c /tmp/taler-exchange.conf future-denominations 2>&1 || true
+        taler-exchange-offline -c /tmp/taler-exchange.conf sign 2>&1 || echo 'Signing may need restart'
         
         # Show master key
         echo ''
         echo 'Exchange Master Public Key:'
-        taler-exchange-keyup -c /etc/taler/taler.conf 2>/dev/null || echo '(will be available after startup)'
+        taler-exchange-keyup -c /tmp/taler-exchange.conf 2>/dev/null || echo '(will be available after startup)'
         
         echo '=== Starting Exchange Services ==='
-        taler-exchange-wirewatch -c /etc/taler/taler.conf &
-        taler-exchange-closer -c /etc/taler/taler.conf &
-        taler-exchange-aggregator -c /etc/taler/taler.conf &
-        taler-exchange-transfer -c /etc/taler/taler.conf &
+        taler-exchange-wirewatch -c /tmp/taler-exchange.conf &
+        taler-exchange-closer -c /tmp/taler-exchange.conf &
+        taler-exchange-aggregator -c /tmp/taler-exchange.conf &
+        taler-exchange-transfer -c /tmp/taler-exchange.conf &
         
         echo '=== Starting Exchange HTTPD ==='
-        exec taler-exchange-httpd -c /etc/taler/taler.conf
+        exec taler-exchange-httpd -c /tmp/taler-exchange.conf
     networks:
       - taler-network
 
