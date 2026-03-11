@@ -47,20 +47,18 @@ fi
 echo "Configuring merchant database..."
 
 PGPASSWORD=talerpassword psql -h postgres -U taler -d "$MERCHANT_DB" <<EOSQL 2>/dev/null || true
-    -- Add local exchange if not exists
+    -- Delete old exchange entry to ensure fresh key
+    DELETE FROM merchant.merchant_exchanges WHERE exchange_url = '${EXCHANGE_URL}/';
+    
+    -- Add local exchange with current master key
     INSERT INTO merchant.merchant_exchanges 
         (exchange_url, master_pub, exchange_pub, last_keys, account_serial)
-    SELECT 
-        '${EXCHANGE_URL}/',
-        '\x${MASTER_KEY}',
-        '\x${MASTER_KEY}',
-        '{}'::jsonb,
-        0
-    WHERE NOT EXISTS (
-        SELECT 1 FROM merchant.merchant_exchanges 
-        WHERE exchange_url = '${EXCHANGE_URL}/'
-    )
-    ON CONFLICT DO NOTHING;
+    VALUES 
+        ('${EXCHANGE_URL}/', '\x${MASTER_KEY}', '\x${MASTER_KEY}', '{}'::jsonb, 0)
+    ON CONFLICT (exchange_url) DO UPDATE SET
+        master_pub = EXCLUDED.master_pub,
+        exchange_pub = EXCLUDED.exchange_pub,
+        last_keys = '{}'::jsonb;
     
     -- Ensure admin instance has wire info configured
     UPDATE merchant.merchant_instances 
