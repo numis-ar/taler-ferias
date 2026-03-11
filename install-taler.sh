@@ -417,6 +417,10 @@ sudo ufw allow "${BANK_PORT}/tcp" 2>/dev/null || true
 
 # 8. Start Docker services
 echo "Starting Taler services..."
+
+# Ensure we're in the correct directory for docker-compose
+cd "$(dirname "$0")" || exit 1
+
 # Clean up any existing containers to avoid port conflicts
 echo "Cleaning up existing containers..."
 $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
@@ -430,6 +434,9 @@ if [ -f /var/lib/docker/network/files/local-kv.db ]; then
     systemctl start docker 2>/dev/null || service docker start 2>/dev/null || true
     sleep 3
 fi
+
+# Run docker-compose from script directory
+cd "$(dirname "$0")" || exit 1
 $COMPOSE_CMD up -d
 
 # Wait for services to be healthy and admin to be created
@@ -498,6 +505,7 @@ else
 fi
 
 # Check if services are running
+cd "$(dirname "$0")" || exit 1
 if $COMPOSE_CMD ps | grep -q "Up"; then
     echo ""
     echo "========================================"
