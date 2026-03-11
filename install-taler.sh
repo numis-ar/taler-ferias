@@ -268,8 +268,8 @@ server {
         
     }
 
-    # Bank /config for wallet withdrawal (returns taler-corebank)
-    location /config {
+    # Bank /bank/config for wallet withdrawal (returns taler-corebank)
+    location /bank/config {
         proxy_pass http://localhost:${BANK_PORT}/config;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
@@ -379,8 +379,8 @@ server {
         
     }
 
-    # Bank /config for wallet withdrawal (returns taler-corebank)
-    location /config {
+    # Bank /bank/config for wallet withdrawal (returns taler-corebank)
+    location /bank/config {
         proxy_pass http://localhost:${BANK_PORT}/config;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
@@ -509,8 +509,8 @@ server {
     }
     }
 
-    # Bank /config for wallet withdrawal (returns taler-corebank)
-    location /config {
+    # Bank /bank/config for wallet withdrawal (returns taler-corebank)
+    location /bank/config {
         proxy_pass http://localhost:${BANK_PORT}/config;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
