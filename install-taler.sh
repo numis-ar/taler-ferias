@@ -495,7 +495,9 @@ echo "Cleaning up existing containers..."
 $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
 $COMPOSE_CMD down -v --remove-orphans 2>/dev/null || true
 docker rm -f $(docker ps -aq) 2>/dev/null || true
+docker network rm $(docker network ls -q) 2>/dev/null || true
 docker network prune -f 2>/dev/null || true
+docker system prune -f 2>/dev/null || true
 # Kill any lingering docker-proxy processes holding ports
 pkill -9 docker-proxy 2>/dev/null || true
 sleep 5
