@@ -431,21 +431,35 @@ sleep 5
 
 # Update merchant config with exchange master key
 echo "Fetching exchange master key for merchant config..."
+echo "Exchange should be available at http://localhost:${EXCHANGE_PORT}/keys"
 for i in {1..60}; do
-    EXCHANGE_MASTER_KEY=$(curl -sf http://localhost:${EXCHANGE_PORT}/keys 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin).get("master_public_key",""))' || echo "")
-    if [ -n "$EXCHANGE_MASTER_KEY" ] && [ "$EXCHANGE_MASTER_KEY" != "null" ]; then
-        echo "Got exchange master key: ${EXCHANGE_MASTER_KEY:0:20}..."
-        # Update merchant config file
-        sed -i "s/# MASTER_KEY will be set below after exchange starts/MASTER_KEY = ${EXCHANGE_MASTER_KEY}/g" merchant-${SUBDOMAIN}.conf
-        # Restart merchant to pick up new config
-        echo "Restarting merchant to apply master key..."
-        docker restart taler-merchant-${SUBDOMAIN} || true
-        sleep 3
-        break
+    # First check if exchange is responding at all
+    KEYS_RESPONSE=$(curl -sf http://localhost:${EXCHANGE_PORT}/keys 2>/dev/null || echo "")
+    if [ -n "$KEYS_RESPONSE" ]; then
+        # Try to extract master key
+        EXCHANGE_MASTER_KEY=$(echo "$KEYS_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("master_public_key",""))' 2>/dev/null || echo "")
+        if [ -n "$EXCHANGE_MASTER_KEY" ] && [ "$EXCHANGE_MASTER_KEY" != "null" ] && [ ${#EXCHANGE_MASTER_KEY} -gt 50 ]; then
+            echo "Got exchange master key: ${EXCHANGE_MASTER_KEY:0:20}..."
+            # Update merchant config file
+            sed -i "s/MASTER_KEY = PLACEHOLDER_WILL_BE_UPDATED/MASTER_KEY = ${EXCHANGE_MASTER_KEY}/g" merchant-${SUBDOMAIN}.conf
+            # Restart merchant to pick up new config
+            echo "Restarting merchant to apply master key..."
+            docker restart taler-merchant-${SUBDOMAIN} || true
+            sleep 3
+            break
+        else
+            echo "  Exchange responded but master key not valid: ${EXCHANGE_MASTER_KEY:0:30}..."
+        fi
+    else
+        echo "  Exchange not responding yet... ($i/60)"
     fi
-    echo "  Waiting for exchange master key... ($i/60)"
     sleep 2
 done
+
+if [ -z "$EXCHANGE_MASTER_KEY" ] || [ "$EXCHANGE_MASTER_KEY" = "null" ]; then
+    echo "WARNING: Could not get exchange master key. Merchant may not work correctly."
+    echo "Check exchange logs: docker logs taler-exchange-${SUBDOMAIN}"
+fi
 
 # Verify admin instance was created (docker-compose.yml now handles this via taler-merchant-passwd)
 echo "Verifying admin instance..."

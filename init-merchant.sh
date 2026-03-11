@@ -34,9 +34,11 @@ fi
 echo "Exchange Master Key: $MASTER_KEY"
 
 # Update config file with master key if it's valid
-if [ -n "$MASTER_KEY" ] && [ "$MASTER_KEY" != "null" ] && [ "$MASTER_KEY" != "PLACEHOLDER_KEY" ]; then
-    echo "Updating merchant config with master key..."
-    sed -i "s/MASTER_KEY = PLACEHOLDER_WILL_BE_UPDATED/MASTER_KEY = \"$MASTER_KEY\"/g" /etc/taler/taler.conf 2>/dev/null || true
+if [ -n "$MASTER_KEY" ] && [ "$MASTER_KEY" != "null" ] && [ "$MASTER_KEY" != "PLACEHOLDER_KEY" ] && [ ${#MASTER_KEY} -gt 50 ]; then
+    echo "Updating merchant config with master key: ${MASTER_KEY:0:20}..."
+    # Remove any existing MASTER_KEY line and add new one
+    sed -i '/^MASTER_KEY = /d' /etc/taler/taler.conf 2>/dev/null || true
+    sed -i "/^\[merchant-exchange-kudos\]/a MASTER_KEY = \"$MASTER_KEY\"" /etc/taler/taler.conf 2>/dev/null || true
 fi
 
 # Check if merchant schema exists
