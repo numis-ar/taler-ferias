@@ -56,6 +56,29 @@ PGPASSWORD=talerpassword psql -h postgres -U taler -d "$MERCHANT_DB" <<EOSQL 2>/
         wire_details = '{"bank_uri": "http://fakebank:8082/", "account": "merchant"}'::jsonb
     WHERE merchant_id = 'admin' 
     AND (wire_type IS NULL OR wire_type = '');
+    
+    -- Create merchant bank account if not exists
+    INSERT INTO merchant.merchant_accounts 
+        (merchant_serial, h_payto, account_name, active)
+    SELECT 
+        m.merchant_serial,
+        'payto://x-taler-bank/localhost/merchant',
+        'default',
+        true
+    FROM merchant.merchant_instances m
+    WHERE m.merchant_id = 'admin'
+    ON CONFLICT DO NOTHING;
+    
+    -- Also add to merchant_instance_wire_accounts for newer schema
+    INSERT INTO merchant.merchant_instance_wire_accounts 
+        (merchant_serial, payto_uri, active)
+    SELECT 
+        m.merchant_serial,
+        'payto://x-taler-bank/localhost/merchant',
+        true
+    FROM merchant.merchant_instances m
+    WHERE m.merchant_id = 'admin'
+    ON CONFLICT DO NOTHING;
 EOSQL
 
 echo "=== Merchant configuration complete ==="
