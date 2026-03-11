@@ -33,10 +33,8 @@ else
 fi
 
 # For internal operations, we use localhost:8081
+# Note: INTERNAL_CONF will be created AFTER master key is added to CONF_FILE
 INTERNAL_CONF="/tmp/taler-exchange-internal.conf"
-cp "$CONF_FILE" "$INTERNAL_CONF"
-sed -i 's|https://[^/]*/exchange/|http://localhost:8081/|g' "$INTERNAL_CONF"
-sed -i 's|BASE_URL = .*|BASE_URL = http://localhost:8081/|g' "$INTERNAL_CONF"
 
 # Check if config exists
 if [ ! -f "$CONF_FILE" ]; then
@@ -134,6 +132,14 @@ else
     echo "MASTER_PUBLIC_KEY already configured"
     grep "^MASTER_PUBLIC_KEY" "$CONF_FILE"
 fi
+
+# Now create INTERNAL_CONF (after master key is in CONF_FILE)
+echo "Creating internal config..."
+cp "$CONF_FILE" "$INTERNAL_CONF"
+sed -i 's|https://[^/]*/exchange/|http://localhost:8081/|g' "$INTERNAL_CONF"
+sed -i 's|BASE_URL = .*|BASE_URL = http://localhost:8081/|g' "$INTERNAL_CONF"
+echo "Internal config created with MASTER_PUBLIC_KEY:"
+grep "^MASTER_PUBLIC_KEY" "$INTERNAL_CONF" || echo "WARNING: No MASTER_PUBLIC_KEY in internal config!"
 
 echo ""
 echo "=== Starting Security Modules ==="
