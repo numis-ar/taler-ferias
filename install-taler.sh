@@ -192,8 +192,8 @@ sed -i "s|href=\"http://localhost:9966/webui/\"|href=\"https://${FULL_DOMAIN}/we
 echo "Creating nginx configuration..."
 
 # Create main frontend nginx config
-sudo tee "/etc/nginx/sites-available/taler-${SUBDOMAIN}" << 'EOFMAIN'
-server {
+# Create nginx configs using printf for proper variable expansion
+printf '%s\n' "server {
     listen 80;
     server_name ${FULL_DOMAIN};
     
@@ -202,7 +202,7 @@ server {
     }
 
     location / {
-        return 301 https://$server_name$request_uri;
+        return 301 https://\$server_name\$request_uri;
     }
 }
 
@@ -221,17 +221,15 @@ server {
 
     location / {
         proxy_pass http://localhost:${FRONTEND_PORT};
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
-}
-EOFMAIN
+}" | sudo tee "/etc/nginx/sites-available/taler-${SUBDOMAIN}" > /dev/null
 
 # Create exchange nginx config
-sudo tee "/etc/nginx/sites-available/taler-${EXCHANGE_SUBDOMAIN}" << 'EOFEXCHANGE'
-server {
+printf '%s\n' "server {
     listen 80;
     server_name ${EXCHANGE_DOMAIN};
     
@@ -240,7 +238,7 @@ server {
     }
 
     location / {
-        return 301 https://$server_name$request_uri;
+        return 301 https://\$server_name\$request_uri;
     }
 }
 
@@ -259,17 +257,15 @@ server {
 
     location / {
         proxy_pass http://localhost:${EXCHANGE_PORT};
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
-}
-EOFEXCHANGE
+}" | sudo tee "/etc/nginx/sites-available/taler-${EXCHANGE_SUBDOMAIN}" > /dev/null
 
 # Create merchant nginx config
-sudo tee "/etc/nginx/sites-available/taler-${MERCHANT_SUBDOMAIN}" << 'EFMERCHANT'
-server {
+printf '%s\n' "server {
     listen 80;
     server_name ${MERCHANT_DOMAIN};
     
@@ -278,7 +274,7 @@ server {
     }
 
     location / {
-        return 301 https://$server_name$request_uri;
+        return 301 https://\$server_name\$request_uri;
     }
 }
 
@@ -297,17 +293,15 @@ server {
 
     location / {
         proxy_pass http://localhost:${MERCHANT_PORT};
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
-}
-EFMERCHANT
+}" | sudo tee "/etc/nginx/sites-available/taler-${MERCHANT_SUBDOMAIN}" > /dev/null
 
 # Create bank nginx config
-sudo tee "/etc/nginx/sites-available/taler-${BANK_SUBDOMAIN}" << 'EOFBANK'
-server {
+printf '%s\n' "server {
     listen 80;
     server_name ${BANK_DOMAIN};
     
@@ -316,7 +310,7 @@ server {
     }
 
     location / {
-        return 301 https://$server_name$request_uri;
+        return 301 https://\$server_name\$request_uri;
     }
 }
 
@@ -335,13 +329,12 @@ server {
 
     location / {
         proxy_pass http://localhost:${BANK_PORT};
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
-}
-EOFBANK
+}" | sudo tee "/etc/nginx/sites-available/taler-${BANK_SUBDOMAIN}" > /dev/null
 
 # Enable all nginx sites
 sudo ln -sf "/etc/nginx/sites-available/taler-${SUBDOMAIN}" "/etc/nginx/sites-enabled/"
