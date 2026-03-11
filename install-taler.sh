@@ -493,7 +493,7 @@ echo "Starting Taler services..."
 # Clean up any existing containers to avoid port conflicts
 echo "Cleaning up existing containers..."
 $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
-docker rm -f taler-postgres taler-bank taler-exchange taler-merchant taler-demo-frontend taler-fakebank 2>/dev/null || true
+docker rm -f taler-postgres-${SUBDOMAIN} taler-bank-${SUBDOMAIN} taler-exchange-${SUBDOMAIN} taler-merchant-${SUBDOMAIN} taler-demo-frontend-${SUBDOMAIN} taler-fakebank 2>/dev/null || true
 sleep 2
 $COMPOSE_CMD up -d
 

@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:15
-    container_name: taler-postgres
     environment:
       POSTGRES_USER: taler
       POSTGRES_PASSWORD: talerpassword
@@ -22,7 +21,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.libeufin
-    container_name: taler-bank
     # Ports defined in docker-compose.override.yml
     environment:
       - LIBEUFIN_BANK_ADMIN_PASSWORD=bankadmin
@@ -38,7 +36,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.exchange
-    container_name: taler-exchange
     depends_on:
       postgres:
         condition: service_healthy
@@ -59,7 +56,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.merchant
-    container_name: taler-merchant
     depends_on:
       postgres:
         condition: service_healthy
@@ -153,7 +149,6 @@ services:
 
   demo-frontend:
     image: nginx:alpine
-    container_name: taler-demo-frontend
     # Ports defined in docker-compose.override.yml
     volumes:
       - ./demo-frontend:/usr/share/nginx/html:ro
