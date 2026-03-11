@@ -71,7 +71,7 @@ git clone https://github.com/numis-ar/taler-ferias.git "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
 # 2. Generate unique ports based on subdomain hash (to avoid conflicts between instances)
-PORT_OFFSET=$(echo "$SUBDOMAIN" | cksum | cut -d' ' -f1 | awk '{print $1 % 1000}')
+PORT_OFFSET=$(echo "$SUBDOMAIN" | cksum | cut -d' ' -f1 | awk '{print $1 % 100}')
 MERCHANT_PORT=$((9966 + PORT_OFFSET))
 FRONTEND_PORT=$((8080 + PORT_OFFSET))
 EXCHANGE_PORT=$((8081 + PORT_OFFSET))
@@ -496,7 +496,12 @@ $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
 docker rm -f taler-postgres-${SUBDOMAIN} taler-bank-${SUBDOMAIN} taler-exchange-${SUBDOMAIN} taler-merchant-${SUBDOMAIN} taler-demo-frontend-${SUBDOMAIN} taler-fakebank 2>/dev/null || true
 # Kill any lingering docker-proxy processes holding ports
 pkill -9 docker-proxy 2>/dev/null || true
-sleep 3
+sleep 2
+# Force kill any process using our target ports
+for port in ${FRONTEND_PORT} ${MERCHANT_PORT} ${EXCHANGE_PORT} ${BANK_PORT}; do
+    fuser -k ${port}/tcp 2>/dev/null || true
+done
+sleep 2
 $COMPOSE_CMD up -d
 
 # Wait for services to be healthy and admin to be created
