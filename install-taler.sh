@@ -29,6 +29,20 @@ echo "=== Installing Taler on ${FULL_DOMAIN} ==="
 echo "Subdomain: ${SUBDOMAIN}"
 echo "Domain: ${DOMAIN}"
 
+# Export for docker-compose
+export FULL_DOMAIN
+export SUBDOMAIN
+export DOMAIN
+
+# Create .env file for docker-compose variable substitution
+cat > .env << EOF
+FULL_DOMAIN=${FULL_DOMAIN}
+SUBDOMAIN=${SUBDOMAIN}
+DOMAIN=${DOMAIN}
+EOF
+
+echo "Created .env file with FULL_DOMAIN=${FULL_DOMAIN}"
+
 # Check prerequisites
 command -v docker >/dev/null 2>&1 || { echo "Docker required but not installed. Aborting."; exit 1; }
 
@@ -66,8 +80,8 @@ BANK_PORT=$((8082 + PORT_OFFSET))
 echo "Using ports: Frontend=${FRONTEND_PORT}, Merchant=${MERCHANT_PORT}, Exchange=${EXCHANGE_PORT}, Bank=${BANK_PORT}"
 
 # 3. Create docker-compose override file for dynamic ports (safer than modifying main file)
-cat > docker-compose.override.yml << EOFCOMPOSE
-services:
+# Using printf to ensure proper variable expansion
+printf '%s\n' "services:
   postgres:
     container_name: taler-postgres-${SUBDOMAIN}
     volumes:
@@ -78,7 +92,7 @@ services:
     environment:
       - BANK_CURRENCY=KUDOS
     ports:
-      - "0.0.0.0:${BANK_PORT}:8082"
+      - \"0.0.0.0:${BANK_PORT}:8082\"
     volumes:
       - fakebank_data_${SUBDOMAIN}:/app/data
   
@@ -88,7 +102,7 @@ services:
       - FULL_DOMAIN=${FULL_DOMAIN}
       - DB_PASSWORD=talerpassword
     ports:
-      - "0.0.0.0:${EXCHANGE_PORT}:8081"
+      - \"0.0.0.0:${EXCHANGE_PORT}:8081\"
     volumes:
       - exchange_data_${SUBDOMAIN}:/var/lib/taler-exchange
       - ./exchange-local.conf:/etc/taler/taler.conf:ro
@@ -102,19 +116,22 @@ services:
       - ./merchant-demo.conf:/etc/taler/taler.conf:ro
       - merchant_data_${SUBDOMAIN}:/var/lib/taler-merchant
     ports:
-      - "0.0.0.0:${MERCHANT_PORT}:9966"
+      - \"0.0.0.0:${MERCHANT_PORT}:9966\"
     
   demo-frontend:
     container_name: taler-demo-frontend-${SUBDOMAIN}
     ports:
-      - "0.0.0.0:${FRONTEND_PORT}:80"
+      - \"0.0.0.0:${FRONTEND_PORT}:80\"
 
 volumes:
   postgres_data_${SUBDOMAIN}:
   merchant_data_${SUBDOMAIN}:
   exchange_data_${SUBDOMAIN}:
   fakebank_data_${SUBDOMAIN}:
-EOFCOMPOSE
+" > docker-compose.override.yml
+
+echo "Created docker-compose.override.yml"
+grep "FULL_DOMAIN" docker-compose.override.yml | head -1
 
 # 4. Update configuration files with the full domain
 echo "Updating configuration files..."
