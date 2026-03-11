@@ -120,10 +120,6 @@ if ! grep -q "^MASTER_PUBLIC_KEY" "$CONF_FILE"; then
         sed -i '/^[# ]*MASTER_PUBLIC_KEY/d' "$CONF_FILE"
         sed -i '/^# Master public key/d' "$CONF_FILE"
         sed -i '/^\[exchange\]/a MASTER_PUBLIC_KEY = '$MASTER_PUB "$CONF_FILE"
-        # Also update internal conf
-        sed -i '/^[# ]*MASTER_PUBLIC_KEY/d' "$INTERNAL_CONF"
-        sed -i '/^# Master public key/d' "$INTERNAL_CONF"
-        sed -i '/^\[exchange\]/a MASTER_PUBLIC_KEY = '$MASTER_PUB "$INTERNAL_CONF"
     else
         echo "ERROR: Could not determine MASTER_PUBLIC_KEY!"
         exit 1
