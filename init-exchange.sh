@@ -276,22 +276,35 @@ if [ "$ACCOUNT_COUNT" = "0" ]; then
     MASTER_PUB_KEY=$(grep "^MASTER_PUBLIC_KEY" "$INTERNAL_CONF" 2>/dev/null | head -1 | sed 's/.*= *//' | tr -d ' ')
     echo "Master public key: $MASTER_PUB_KEY"
     
-    # Try to generate a proper signature using the offline tool
-    # For now, insert with null signature and see if exchange accepts it
     # Check actual table schema first
     echo "Checking wire_accounts schema..."
     PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_exchange -c "\d exchange.wire_accounts" 2>/dev/null || echo "Could not describe table"
     
-    # Try minimal insert with only basic columns
-    PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_exchange <<EOSQL 2>&1 || echo "Direct insert failed"
-INSERT INTO exchange.wire_accounts 
-    (payto_uri, master_sig, is_active)
-VALUES 
-    ('payto://x-taler-bank/libeufin-bank/exchange?receiver-name=Exchange', 
-     NULL, 
-     true)
-ON CONFLICT (payto_uri) DO UPDATE SET is_active = true;
-EOSQL
+    # The offline tool is the proper way to add wire accounts.
+    # Direct SQL insert won't work because:
+    # - master_sig must be exactly 64 bytes (CHECK constraint)
+    # - last_change is required and must be monotonic
+    # - Signatures must be valid
+    # 
+    # We need to debug why the upload is failing.
+    echo ""
+    echo "=== DEBUG: Checking enable-account output ==="
+    if [ -f /tmp/enable-account.json ]; then
+        echo "enable-account.json exists ($(wc -c < /tmp/enable-account.json) bytes):"
+        cat /tmp/enable-account.json
+    else
+        echo "enable-account.json not found!"
+    fi
+    
+    echo ""
+    echo "=== DEBUG: Trying upload again with verbose output ==="
+    if [ -f /tmp/enable-account.json ]; then
+        taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/enable-account.json 2>&1 || echo "Upload failed"
+    fi
+    
+    echo ""
+    echo "=== DEBUG: Check exchange httpd availability ==="
+    curl -v http://localhost:8081/ 2>&1 | head -20
     
     # Check again
     sleep 1
