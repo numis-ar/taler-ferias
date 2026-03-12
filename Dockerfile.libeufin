@@ -30,7 +30,7 @@ RUN mkdir -p /var/lib/libeufin-bank && \
 RUN mkdir -p /etc/libeufin && \
     echo '[libeufin-bank]' > /etc/libeufin/bank.conf && \
     echo 'CURRENCY = KUDOS' >> /etc/libeufin/bank.conf && \
-    echo 'BASE_URL = http://localhost:8080/' >> /etc/libeufin/bank.conf && \
+    echo 'BASE_URL = http://libeufin-bank:8080/' >> /etc/libeufin/bank.conf && \
     echo '' >> /etc/libeufin/bank.conf && \
     echo '[libeufin-bankdb-postgres]' >> /etc/libeufin/bank.conf && \
     echo 'CONFIG = jdbc:postgresql://postgres:5432/libeufin_bank?user=taler&password=talerpassword' >> /etc/libeufin/bank.conf

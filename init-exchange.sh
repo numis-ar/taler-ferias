@@ -111,9 +111,10 @@ fi
 
 # Add MASTER_PUBLIC_KEY to config if missing
 if ! grep -q "^MASTER_PUBLIC_KEY" "$CONF_FILE"; then
-    if [ -z "$MASTER_PUB" ]; then
-        MASTER_PUB=$(cat "$MASTER_KEY_FILE" 2>/dev/null | tr ' ' '\n' | grep -E '^[A-Z0-9]{50,55}$' | head -1 || echo "")
-    fi
+    SETUP_OUTPUT=$(taler-exchange-offline -c "$CONF_FILE" setup 2>&1)
+    echo "Setup output: $SETUP_OUTPUT"
+    
+    MASTER_PUB=$(echo "$SETUP_OUTPUT" | tr ' ' '\n' | grep -E '^[A-Z0-9]{50,55}$' | head -1 || echo "")
     
     if [ -n "$MASTER_PUB" ]; then
         echo "Adding MASTER_PUBLIC_KEY: $MASTER_PUB"
@@ -132,8 +133,10 @@ fi
 # Now create INTERNAL_CONF (after master key is in CONF_FILE)
 echo "Creating internal config..."
 cp "$CONF_FILE" "$INTERNAL_CONF"
-sed -i 's|https://[^/]*/exchange/|http://localhost:8081/|g' "$INTERNAL_CONF"
-sed -i 's|BASE_URL = .*|BASE_URL = http://localhost:8081/|g' "$INTERNAL_CONF"
+echo "DIFF internal config..."
+diff "$CONF_FILE" "$INTERNAL_CONF"
+# sed -i 's|https://[^/]*/exchange/|http://localhost:8081/|g' "$INTERNAL_CONF"
+# sed -i 's|BASE_URL = .*|BASE_URL = http://localhost:8081/|g' "$INTERNAL_CONF"
 echo "Internal config created with MASTER_PUBLIC_KEY:"
 grep "^MASTER_PUBLIC_KEY" "$INTERNAL_CONF" || echo "WARNING: No MASTER_PUBLIC_KEY in internal config!"
 
@@ -141,15 +144,15 @@ echo ""
 echo "=== Starting Security Modules ==="
 
 # Start security modules first
-taler-exchange-secmod-rsa -c "$CONF_FILE" &
-taler-exchange-secmod-cs -c "$CONF_FILE" &
-taler-exchange-secmod-eddsa -c "$CONF_FILE" &
+taler-exchange-secmod-rsa -c "$CONF_FILE" -l rsa.log -L DEBUG &
+taler-exchange-secmod-cs -c "$CONF_FILE" -l cs.log -L DEBUG  &
+taler-exchange-secmod-eddsa -c "$CONF_FILE" -l eddsa.log -L DEBUG  &
 
 sleep 3
 
 # Start httpd for configuration
 echo "Starting httpd for configuration..."
-taler-exchange-httpd -c "$INTERNAL_CONF" &
+taler-exchange-httpd -c "$INTERNAL_CONF" -l httpd.log -L DEBUG &
 HTTPD_PID=$!
 
 # Wait for httpd to be running (not necessarily /keys)
@@ -161,7 +164,7 @@ for i in {1..60}; do
     fi
     if ! kill -0 $HTTPD_PID 2>/dev/null; then
         echo "Httpd died! Restarting..."
-        taler-exchange-httpd -c "$INTERNAL_CONF" &
+        taler-exchange-httpd -c "$INTERNAL_CONF" -l httpd.log -L DEBUG &
         HTTPD_PID=$!
     fi
     sleep 1
@@ -188,14 +191,18 @@ fi
 echo "Internal config MASTER_PUBLIC_KEY:"
 grep "^MASTER_PUBLIC_KEY" "$INTERNAL_CONF" || echo "WARNING: No MASTER_PUBLIC_KEY in internal config!"
 
+# exchange: BE71096123456769
+# wallet: FI1410093000123458
+# merchant: DE75512108001245126199
+
 # Bank payto URL - MUST match [exchange-account-1] PAYTO_URI in config
-BANK_PAYTO_URL="payto://x-taler-bank/libeufin-bank/exchange?receiver-name=Exchange"
+BANK_PAYTO_URL="payto://iban/BE71096123456769?receiver-name=PSP"
 echo "Bank payto URL: $BANK_PAYTO_URL"
 
 # Enable wire account - generate signed command and upload
 echo ""
 echo "Running enable-account command..."
-taler-exchange-offline -c "$INTERNAL_CONF" enable-account "$BANK_PAYTO_URL" 2>&1 | tee /tmp/enable-account.json
+taler-exchange-offline -c "$INTERNAL_CONF" enable-account "$BANK_PAYTO_URL" 2>&1 > /tmp/enable-account.json
 ENABLE_EXIT=$?
 
 echo ""
@@ -231,7 +238,7 @@ sleep 5
 # Set up wire fees (needed for /keys to work)
 echo ""
 echo "Setting up wire fees..."
-taler-exchange-offline -c "$INTERNAL_CONF" wire-fee now x-taler-bank KUDOS:0 KUDOS:0 2>&1 | tee /tmp/wire-fee.json
+taler-exchange-offline -c "$INTERNAL_CONF" wire-fee now iban KUDOS:0 KUDOS:0 2>&1 > /tmp/wire-fee.json
 WIRE_EXIT=$?
 
 echo "wire-fee exit code: $WIRE_EXIT"
@@ -245,7 +252,7 @@ fi
 # Set up global fees
 echo ""
 echo "Setting up global fees..."
-taler-exchange-offline -c "$INTERNAL_CONF" global-fee now KUDOS:0 KUDOS:0 KUDOS:0 1d 1y 100 2>&1 | tee /tmp/global-fee.json
+taler-exchange-offline -c "$INTERNAL_CONF" global-fee now KUDOS:0 KUDOS:0 KUDOS:0 1d 1y 100 2>&1 > /tmp/global-fee.json
 GLOBAL_EXIT=$?
 
 echo "global-fee exit code: $GLOBAL_EXIT"
@@ -316,12 +323,12 @@ fi
 echo ""
 echo "=== Downloading and Signing Online Keys ==="
 echo "Downloading keys from exchange..."
-taler-exchange-offline -c "$INTERNAL_CONF" download 2>&1 | tee /tmp/keys-downloaded.json
+taler-exchange-offline -c "$INTERNAL_CONF" download 2>&1 > /tmp/keys-downloaded.json
 DOWNLOAD_EXIT=${PIPESTATUS[0]}
 
 if [ $DOWNLOAD_EXIT -eq 0 ] && [ -s /tmp/keys-downloaded.json ] && head -1 /tmp/keys-downloaded.json | grep -qE '[\{\[]'; then
     echo "Got keys ($(wc -c < /tmp/keys-downloaded.json) bytes), signing..."
-    taler-exchange-offline -c "$INTERNAL_CONF" sign < /tmp/keys-downloaded.json 2>&1 | tee /tmp/keys-signed.json
+    taler-exchange-offline -c "$INTERNAL_CONF" sign < /tmp/keys-downloaded.json 2>&1 > /tmp/keys-signed.json
     SIGN_EXIT=${PIPESTATUS[0]}
     
     if [ $SIGN_EXIT -eq 0 ] && [ -s /tmp/keys-signed.json ]; then

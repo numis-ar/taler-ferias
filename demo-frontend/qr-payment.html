@@ -209,7 +209,7 @@
             successDiv.classList.remove('active');
             
             try {
-                const response = await fetch('http://localhost:9966/private/orders', {
+                const response = await fetch('http://taler-merchant:9966/private/orders', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -278,7 +278,7 @@
             
             try {
                 const response = await fetch(
-                    `http://localhost:9966/orders/${currentOrder.order_id}?token=${currentOrder.token}`
+                    `http://taler-merchant:9966/orders/${currentOrder.order_id}?token=${currentOrder.token}`
                 );
                 const data = await response.json();
                 

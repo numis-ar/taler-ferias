@@ -6,6 +6,7 @@ services:
       POSTGRES_PASSWORD: talerpassword
       POSTGRES_DB: taler
     volumes:
+      - /dev/null:/etc/hosts:ro
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
     healthcheck:
@@ -23,16 +24,20 @@ services:
       dockerfile: Dockerfile.libeufin
     # Ports defined in docker-compose.override.yml
     environment:
-      - LIBEUFIN_BANK_ADMIN_PASSWORD=bankadmin
+      - LIBEUFIN_BANK_ADMIN_PASSWORD=asdasdasd
       - LIBEUFIN_BANK_CURRENCY=KUDOS
       - LIBEUFIN_BANK_PORT=8080
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
+      - /dev/null:/etc/hosts:ro
+      - ./bank.conf:/etc/libeufin/bank.conf:ro
       - ./libeufin-start.sh:/usr/local/bin/libeufin-start.sh:ro
     networks:
       - taler-network
+    ports:
+      - 8080:8080
 
   taler-exchange:
     build:
@@ -48,12 +53,17 @@ services:
       - TALER_CONFIG=/etc/taler/taler.conf
       - DB_PASSWORD=talerpassword
       - FULL_DOMAIN=${FULL_DOMAIN}
+      - USER=root
     volumes:
-      - ./exchange-local.conf:/etc/taler/taler.conf:ro
+      - ./offline-keys.bkp/data:/root/.local/share/taler-exchange/
+      - /dev/null:/etc/hosts:ro
+      - ./exchange.conf:/etc/taler/taler.conf:ro
       - ./init-exchange.sh:/usr/local/bin/init-exchange.sh:ro
       - exchange_data:/var/lib/taler-exchange
     networks:
       - taler-network
+    ports:
+      - 8081:8081
 
   taler-merchant:
     build:
@@ -71,7 +81,8 @@ services:
       - TALER_CONFIG=/etc/taler/taler.conf
       - EXCHANGE_URL=http://taler-exchange:8081
     volumes:
-      - ./merchant-demo.conf:/etc/taler/taler.conf:ro
+      - /dev/null:/etc/hosts:ro
+      - ./merchant.conf:/etc/taler/taler.conf:ro
       - merchant_data:/var/lib/taler-merchant
       - ./init-merchant.sh:/tmp/init-merchant.sh:ro
     command:
@@ -117,7 +128,7 @@ services:
         
         # Create admin instance
         echo 'Creating/Updating admin instance...'
-        TALER_MERCHANT_PASSWORD=adminpassword taler-merchant-passwd \
+        TALER_MERCHANT_PASSWORD=asdasdasd taler-merchant-passwd \
           -c /etc/taler/taler.conf \
           --instance=admin 2>&1 || {
             echo 'INFO: taler-merchant-passwd returned non-zero (may be OK if admin exists)'
@@ -139,27 +150,35 @@ services:
         bash /tmp/init-merchant.sh || echo 'Merchant init completed with warnings'
         
         echo '=== Starting Merchant Services ==='
-        taler-merchant-wirewatch -c /etc/taler/taler.conf &
-        taler-merchant-depositcheck -c /etc/taler/taler.conf &
-        taler-merchant-exchangekeyupdate -c /etc/taler/taler.conf &
+        taler-merchant-wirewatch -c /tmp/taler.conf -l wirewatch.log -L DEBUG &
+        taler-merchant-depositcheck -c /tmp/taler.conf -l depositcheck.log -L DEBUG  &
+        taler-merchant-exchangekeyupdate -c /tmp/taler.conf -l exchangekeyupdate.log -L DEBUG &
+        taler-merchant-kyccheck -c /tmp/taler.conf -l kyccheck.log -L DEBUG &
+        taler-merchant-reconciliation -c /tmp/taler.conf -l reconciliation.log -L DEBUG &
+        taler-merchant-webhook -c /tmp/taler.conf -l webhook.log -L DEBUG &
         
         echo '=== Starting Merchant HTTP Daemon ==='
-        echo 'Merchant Web UI: http://localhost:9966/webui/'
-        echo 'Login: admin / adminpassword'
-        exec taler-merchant-httpd -c /etc/taler/taler.conf
+        echo 'Merchant Web UI: http://taler-merchant:9966/webui/'
+        echo 'Login: admin / asdasdasd'
+        exec taler-merchant-httpd -c /tmp/taler.conf
     networks:
       - taler-network
+    ports:
+      - 9966:9966
 
   demo-frontend:
     image: nginx:alpine
     # Ports defined in docker-compose.override.yml
     volumes:
+      - /dev/null:/etc/hosts:ro
       - ./demo-frontend:/usr/share/nginx/html:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - taler-network
     depends_on:
       - taler-merchant
+    ports:
+      - 80:80
 
 volumes:
   postgres_data:

@@ -655,7 +655,7 @@ done
 if [ "$ADMIN_CHECK" != "admin" ]; then
     echo "Creating admin instance manually..."
     docker exec taler-merchant-${SUBDOMAIN} bash -c \
-        'TALER_MERCHANT_PASSWORD=adminpassword taler-merchant-passwd -c /etc/taler/taler.conf --instance=admin' 2>&1
+        'TALER_MERCHANT_PASSWORD=asdasdasd taler-merchant-passwd -c /etc/taler/taler.conf --instance=admin' 2>&1
 fi
 
 # Verify bank account is configured
@@ -684,16 +684,17 @@ if $COMPOSE_CMD ps | grep -q "Up"; then
     echo "  Bank:        https://${BANK_DOMAIN}/"
     echo ""
     echo "Default Credentials:"
-    echo "  Merchant:    admin / adminpassword"
-    echo "  Bank Admin:  admin / bankadmin"
-    echo "  Bank Users:  exchange / exchange"
-    echo "               testuser / testpass"
+    echo "  Merchant:    admin / asdasdasd"
+    echo "  Bank Admin:  admin / asdasdasd"
+    echo "  Bank Users:  exchange / asdasdasd"
+    echo "               wallet / asdasdasd"
+    echo "               merchant / asdasdasd"
     echo ""
     echo "Internal ports (for debugging):"
     echo "  Frontend:    http://localhost:${FRONTEND_PORT}"
-    echo "  Merchant:    http://localhost:${MERCHANT_PORT}"
-    echo "  Exchange:    http://localhost:${EXCHANGE_PORT}"
-    echo "  Bank:        http://localhost:${BANK_PORT}"
+    echo "  Merchant:    http://taler-merchant:${MERCHANT_PORT}"
+    echo "  Exchange:    http://taler-exchange:${EXCHANGE_PORT}"
+    echo "  Bank:        http://libeufin-bank:${BANK_PORT}"
     echo ""
     echo "Services are interconnected:"
     echo "  - Frontend → Merchant → Exchange → Bank"

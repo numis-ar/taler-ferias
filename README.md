@@ -74,6 +74,18 @@ The script will:
 
 ### Option 2: Local Development
 
+**Prerequisites:**
+ - Domains pointing to localhost (edit /etc/hosts)
+```bash
+ 127.0.0.1 localhost taler-exchange taler-merchant libeufin-bank
+```
+
+**Bank accounts numbers**
+ - exchange: BE71096123456769
+ - wallet: FI1410093000123458
+ - merchant: DE75512108001245126199
+
+
 1. Build and start all services:
 ```bash
 docker compose up -d

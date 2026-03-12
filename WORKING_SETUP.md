@@ -25,8 +25,8 @@ Services:
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | Demo Store | http://localhost:8080 | - |
-| Merchant Web UI | http://localhost:9966/webui/ | admin / adminpassword |
-| Merchant API | http://localhost:9966/ | Bearer secret-token:adminpassword |
+| Merchant Web UI | http://localhost:9966/webui/ | admin / asdasdasd |
+| Merchant API | http://localhost:9966/ | Bearer secret-token:???? |
 
 ---
 

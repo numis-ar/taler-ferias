@@ -26,7 +26,7 @@ echo "   Then run: taler-wallet-cli withdraw"
 
 echo ""
 echo "4. Your merchant backend is at: http://localhost:9966/webui/"
-echo "   Login: admin / adminpassword"
+echo "   Login: admin / qweqweqwe"
 
 echo ""
 echo "5. After creating an order, pay with:"

@@ -190,7 +190,7 @@
                 <div class="step-content">
                     <h3>Get KUDOS</h3>
                     <p>Visit the demo bank to withdraw KUDOS (test currency):<br>
-                    <a href="https://bank.demo.taler.net/" target="_blank">https://bank.demo.taler.net/</a><br>
+                    <a href="http://libeufin-bank:8080/" target="_blank">http://libeufin-bank:8080/</a><br>
                     Login with any username and password (demo account).</p>
                 </div>
             </div>
@@ -200,8 +200,8 @@
                 <div class="step-content">
                     <h3>Create an Order</h3>
                     <p>Use the Merchant Web UI to create an order:<br>
-                    <a href="http://localhost:9966/webui/" target="_blank" class="merchant-link">Open Merchant Web UI</a><br>
-                    Login: <code>admin</code> / Password: <code>adminpassword</code></p>
+                    <a href="http://taler-merchant:9966/webui/" target="_blank" class="merchant-link">Open Merchant Web UI</a><br>
+                    Login: <code>admin</code> / Password: <code>asdasdasd</code></p>
                 </div>
             </div>
 
@@ -218,7 +218,7 @@
         <div class="info-box">
             <h3>🔌 System Status</h3>
             <p><strong>Merchant Backend:</strong> <span style="color: green;">✓ Running</span> on port 9966<br>
-            <strong>Exchange:</strong> <span style="color: green;">✓ Connected</span> to https://exchange.demo.taler.net/<br>
+            <strong>Exchange:</strong> <span style="color: green;">✓ Connected</span> to http://taler-exchange:8081/<br>
             <strong>Database:</strong> <span style="color: green;">✓ Connected</span> to PostgreSQL<br>
             <strong>Currency:</strong> KUDOS (test currency)</p>
         </div>
@@ -270,7 +270,7 @@
 
     <script>
         function openMerchant() {
-            window.open('http://localhost:9966/webui/', '_blank');
+            window.open('http://taler-merchant:9966/webui/', '_blank');
         }
     </script>
 </body>
