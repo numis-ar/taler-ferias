@@ -363,15 +363,50 @@ sudo rm -f "/etc/nginx/sites-available/taler-${SUBDOMAIN}-temp" 2>/dev/null || t
 if [ "$SSL_SUCCESS" = true ]; then
     echo "Enabling HTTPS configuration..."
     
-    # Add HTTPS server blocks only for domains with valid certificates
+    # Find the certificate directory (certbot uses the first domain as the directory name)
+    CERT_DIR=""
+    for POSSIBLE_DIR in "${FULL_DOMAIN}" "${DOMAIN}"; do
+        if [ -d "/etc/letsencrypt/live/${POSSIBLE_DIR}" ]; then
+            CERT_DIR="/etc/letsencrypt/live/${POSSIBLE_DIR}"
+            break
+        fi
+    done
+    
+    if [ -z "$CERT_DIR" ]; then
+        echo "WARNING: Could not find SSL certificate directory"
+        echo "Searched: /etc/letsencrypt/live/${FULL_DOMAIN}"
+        echo "          /etc/letsencrypt/live/${DOMAIN}"
+        # List available certs
+        echo "Available certificates:"
+        sudo certbot certificates 2>/dev/null | grep -E "(^Certificate Name|Domains)" || true
+    else
+        echo "Using SSL certificate from: ${CERT_DIR}"
+    fi
+    
+    # Add HTTPS server blocks for all domains with valid certificate
     for DOMAIN_ITEM in "${FULL_DOMAIN}:${FRONTEND_PORT}:${SUBDOMAIN}" "${EXCHANGE_DOMAIN}:${EXCHANGE_PORT}:${EXCHANGE_SUBDOMAIN}" "${MERCHANT_DOMAIN}:${MERCHANT_PORT}:${MERCHANT_SUBDOMAIN}" "${BANK_DOMAIN}:${BANK_PORT}:${BANK_SUBDOMAIN}"; do
         IFS=':' read -r DNAME DPORT DSUB <<< "$DOMAIN_ITEM"
         
-        # Check if certificate exists for this domain
-        if [ -f "/etc/letsencrypt/live/${DNAME}/fullchain.pem" ]; then
+        # Check if certificate exists for this domain (it should be in the cert file)
+        if [ -n "$CERT_DIR" ] && [ -f "${CERT_DIR}/fullchain.pem" ]; then
             echo "  Adding HTTPS for ${DNAME}"
-            # Append HTTPS server block
-            printf '%s\n' "
+            # Update HTTP server block to redirect to HTTPS
+            # First, read the existing config
+            HTTP_CONFIG=$(sudo cat "/etc/nginx/sites-available/taler-${DSUB}" 2>/dev/null || echo "")
+            
+            # Create HTTP server block with redirect
+            printf '%s\n' "server {
+    listen 80;
+    server_name ${DNAME};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
 
 server {
     listen 443 ssl;
@@ -379,8 +414,8 @@ server {
     http2 on;
     server_name ${DNAME};
 
-    ssl_certificate /etc/letsencrypt/live/${DNAME}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${DNAME}/privkey.pem;
+    ssl_certificate ${CERT_DIR}/fullchain.pem;
+    ssl_certificate_key ${CERT_DIR}/privkey.pem;
 
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
@@ -393,7 +428,7 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
-}" | sudo tee -a "/etc/nginx/sites-available/taler-${DSUB}" > /dev/null
+}" | sudo tee "/etc/nginx/sites-available/taler-${DSUB}" > /dev/null
         else
             echo "  No SSL certificate for ${DNAME}, keeping HTTP only"
         fi
