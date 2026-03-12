@@ -61,6 +61,21 @@ echo "Cloning repository to ${INSTALL_DIR}..."
 git clone https://github.com/numis-ar/taler-ferias.git "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
+# Check for conflicting web servers
+if systemctl is-active --quiet apache2 2>/dev/null; then
+    echo "WARNING: Apache2 is running and may conflict with nginx"
+    echo "Stopping Apache2..."
+    sudo systemctl stop apache2
+    sudo systemctl disable apache2
+fi
+
+if systemctl is-active --quiet httpd 2>/dev/null; then
+    echo "WARNING: httpd is running and may conflict with nginx"
+    echo "Stopping httpd..."
+    sudo systemctl stop httpd
+    sudo systemctl disable httpd
+fi
+
 # Create .env file for docker-compose variable substitution (AFTER cd to install dir)
 cat > .env << EOF
 FULL_DOMAIN=${FULL_DOMAIN}
