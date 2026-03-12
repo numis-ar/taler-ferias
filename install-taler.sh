@@ -227,12 +227,23 @@ for DOMAIN_ITEM in "${FULL_DOMAIN}:${FRONTEND_PORT}:${SUBDOMAIN}" "${EXCHANGE_DO
 }" | sudo tee "/etc/nginx/sites-available/taler-${DSUB}" > /dev/null
 done
 
+# Ensure sites-enabled directory exists and is included in nginx config
+sudo mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
+if ! grep -q "sites-enabled" /etc/nginx/nginx.conf 2>/dev/null; then
+    echo "Adding sites-enabled to nginx.conf..."
+    sudo sed -i '/http {/a \    include /etc/nginx/sites-enabled/*;' /etc/nginx/nginx.conf
+fi
+
+# Remove default nginx site to prevent conflicts
+sudo rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+
 # Enable all nginx sites
 sudo ln -sf "/etc/nginx/sites-available/taler-${SUBDOMAIN}" "/etc/nginx/sites-enabled/"
 sudo ln -sf "/etc/nginx/sites-available/taler-${EXCHANGE_SUBDOMAIN}" "/etc/nginx/sites-enabled/" 2>/dev/null || true
 sudo ln -sf "/etc/nginx/sites-available/taler-${MERCHANT_SUBDOMAIN}" "/etc/nginx/sites-enabled/" 2>/dev/null || true
 sudo ln -sf "/etc/nginx/sites-available/taler-${BANK_SUBDOMAIN}" "/etc/nginx/sites-enabled/" 2>/dev/null || true
 
+# Test and reload nginx
 sudo nginx -t && sudo systemctl reload nginx
 
 # 6. Get SSL certificate for subdomain
