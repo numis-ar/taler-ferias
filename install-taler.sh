@@ -192,16 +192,22 @@ MASTER_KEY = PLACEHOLDER_WILL_BE_UPDATED
 CURRENCY = KUDOS
 EOF
 
-# Update Merchant Web UI links
-sed -i "s|http://localhost:9966/webui/|https://${FULL_DOMAIN}/webui/|g" demo-frontend/index.html
-sed -i "s|localhost:9966/webui|${FULL_DOMAIN}/webui|g" demo-frontend/index.html
-sed -i "s/http:\/\/localhost:8080/https:\/\/${FULL_DOMAIN}/g" demo-frontend/index.html
-# Update API URLs in qr-payment.html
-sed -i "s|http://localhost:9966|https://${FULL_DOMAIN}|g" demo-frontend/qr-payment.html
+# Update Merchant Web UI links - point to merchant subdomain
+sed -i "s|http://localhost:9966|https://${MERCHANT_DOMAIN}|g" demo-frontend/index.html
+sed -i "s|localhost:9966|${MERCHANT_DOMAIN}|g" demo-frontend/index.html
+
+# Update Bank links - point to bank subdomain
+sed -i "s|http://localhost:8080|https://${BANK_DOMAIN}|g" demo-frontend/index.html
+
+# Update API URLs in qr-payment.html - point to merchant subdomain for API
+sed -i "s|http://localhost:9966|https://${MERCHANT_DOMAIN}|g" demo-frontend/qr-payment.html
+
+# Update fulfillment URL to use frontend domain
+sed -i "s|http://localhost:8080/success|https://${FULL_DOMAIN}/success|g" demo-frontend/qr-payment.html
 
 # Also update any protocol-relative URLs
-sed -i "s|window\.open('http://localhost:9966/webui/'|window.open('https://${FULL_DOMAIN}/webui/'|g" demo-frontend/index.html
-sed -i "s|href=\"http://localhost:9966/webui/\"|href=\"https://${FULL_DOMAIN}/webui/\"|g" demo-frontend/index.html
+sed -i "s|window\.open('http://localhost:9966/webui/'|window.open('https://${MERCHANT_DOMAIN}/webui/'|g" demo-frontend/index.html
+sed -i "s|href=\"http://localhost:9966/webui/\"|href=\"https://${MERCHANT_DOMAIN}/webui/\"|g" demo-frontend/index.html
 
 # 5. Create nginx configs for subdomains
 echo "Creating nginx configuration..."
