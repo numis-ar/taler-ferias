@@ -29,6 +29,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ./libeufin-start.sh:/usr/local/bin/libeufin-start.sh:ro
     networks:
       - taler-network
 
@@ -48,6 +50,7 @@ services:
       - FULL_DOMAIN=${FULL_DOMAIN}
     volumes:
       - ./exchange-local.conf:/etc/taler/taler.conf:ro
+      - ./init-exchange.sh:/usr/local/bin/init-exchange.sh:ro
       - exchange_data:/var/lib/taler-exchange
     networks:
       - taler-network
