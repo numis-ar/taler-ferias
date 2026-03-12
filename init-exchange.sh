@@ -202,7 +202,7 @@ echo ""
 echo "enable-account exit code: $ENABLE_EXIT"
 echo "Output file size: $(wc -c < /tmp/enable-account.json 2>/dev/null || echo 0) bytes"
 
-if [ -s /tmp/enable-account.json ] && head -1 /tmp/enable-account.json | grep -q '{'; then
+if [ -s /tmp/enable-account.json ] && head -1 /tmp/enable-account.json | grep -qE '[\{\[]'; then
     echo "Valid JSON detected, uploading..."
     for retry in 1 2 3; do
         echo "Upload attempt $retry/3..."
@@ -235,7 +235,7 @@ taler-exchange-offline -c "$INTERNAL_CONF" wire-fee now x-taler-bank KUDOS:0 KUD
 WIRE_EXIT=$?
 
 echo "wire-fee exit code: $WIRE_EXIT"
-if [ -s /tmp/wire-fee.json ] && head -1 /tmp/wire-fee.json | grep -q '{'; then
+if [ -s /tmp/wire-fee.json ] && head -1 /tmp/wire-fee.json | grep -qE '[\{\[]'; then
     echo "Uploading wire fees..."
     taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/wire-fee.json 2>&1
 else
@@ -249,7 +249,7 @@ taler-exchange-offline -c "$INTERNAL_CONF" global-fee now KUDOS:0 KUDOS:0 KUDOS:
 GLOBAL_EXIT=$?
 
 echo "global-fee exit code: $GLOBAL_EXIT"
-if [ -s /tmp/global-fee.json ] && head -1 /tmp/global-fee.json | grep -q '{'; then
+if [ -s /tmp/global-fee.json ] && head -1 /tmp/global-fee.json | grep -qE '[\{\[]'; then
     echo "Uploading global fees..."
     taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/global-fee.json 2>&1
 else
