@@ -278,16 +278,18 @@ if [ "$ACCOUNT_COUNT" = "0" ]; then
     
     # Try to generate a proper signature using the offline tool
     # For now, insert with null signature and see if exchange accepts it
+    # Check actual table schema first
+    echo "Checking wire_accounts schema..."
+    PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_exchange -c "\d exchange.wire_accounts" 2>/dev/null || echo "Could not describe table"
+    
+    # Try minimal insert with only basic columns
     PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_exchange <<EOSQL 2>&1 || echo "Direct insert failed"
 INSERT INTO exchange.wire_accounts 
-    (payto_uri, master_sig, is_active, last_alert, debit_restrictions, credit_restrictions)
+    (payto_uri, master_sig, is_active)
 VALUES 
     ('payto://x-taler-bank/libeufin-bank/exchange?receiver-name=Exchange', 
      NULL, 
-     true, 
-     0, 
-     '{}'::jsonb, 
-     '{}'::jsonb)
+     true)
 ON CONFLICT (payto_uri) DO UPDATE SET is_active = true;
 EOSQL
     
