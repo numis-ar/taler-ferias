@@ -69,7 +69,30 @@ NGINX_ENABLED="/etc/nginx/sites-enabled/taler-${SUBDOMAIN}"
 NGINX_TEMP_AVAILABLE="/etc/nginx/sites-available/taler-${SUBDOMAIN}-temp"
 NGINX_TEMP_ENABLED="/etc/nginx/sites-enabled/taler-${SUBDOMAIN}-temp"
 
-for f in "$NGINX_AVAILABLE" "$NGINX_ENABLED" "$NGINX_TEMP_AVAILABLE" "$NGINX_TEMP_ENABLED"; do
+# Subdomain-specific configs
+EXCHANGE_SUBDOMAIN="exchange.${SUBDOMAIN}"
+MERCHANT_SUBDOMAIN="merchant.${SUBDOMAIN}"
+BANK_SUBDOMAIN="bank.${SUBDOMAIN}"
+
+NGINX_EXCHANGE_AVAIL="/etc/nginx/sites-available/taler-${EXCHANGE_SUBDOMAIN}"
+NGINX_EXCHANGE_EN="/etc/nginx/sites-enabled/taler-${EXCHANGE_SUBDOMAIN}"
+NGINX_MERCHANT_AVAIL="/etc/nginx/sites-available/taler-${MERCHANT_SUBDOMAIN}"
+NGINX_MERCHANT_EN="/etc/nginx/sites-enabled/taler-${MERCHANT_SUBDOMAIN}"
+NGINX_BANK_AVAIL="/etc/nginx/sites-available/taler-${BANK_SUBDOMAIN}"
+NGINX_BANK_EN="/etc/nginx/sites-enabled/taler-${BANK_SUBDOMAIN}"
+
+# Extract ports for firewall cleanup BEFORE deleting configs
+MERCHANT_PORT=""
+FRONTEND_PORT=""
+if [ -f "$NGINX_AVAILABLE" ]; then
+    MERCHANT_PORT=$(grep -o 'localhost:[0-9]*' "$NGINX_AVAILABLE" | grep -v 8080 | head -1 | cut -d: -f2)
+    FRONTEND_PORT=$(grep -o 'localhost:[0-9]*' "$NGINX_AVAILABLE" | grep 8080 | head -1 | cut -d: -f2)
+fi
+
+for f in "$NGINX_AVAILABLE" "$NGINX_ENABLED" "$NGINX_TEMP_AVAILABLE" "$NGINX_TEMP_ENABLED" \
+         "$NGINX_EXCHANGE_AVAIL" "$NGINX_EXCHANGE_EN" \
+         "$NGINX_MERCHANT_AVAIL" "$NGINX_MERCHANT_EN" \
+         "$NGINX_BANK_AVAIL" "$NGINX_BANK_EN"; do
     if [ -f "$f" ] || [ -L "$f" ]; then
         rm -f "$f"
         echo "Removed: ${f}"
@@ -104,19 +127,14 @@ echo ""
 read -p "Close firewall ports for this installation? (y/N) " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    # Try to extract ports from nginx config if it still exists
-    if [ -f "$NGINX_AVAILABLE" ]; then
-        MERCHANT_PORT=$(grep -o 'localhost:[0-9]*' "$NGINX_AVAILABLE" | grep -v 8080 | head -1 | cut -d: -f2)
-        FRONTEND_PORT=$(grep -o 'localhost:[0-9]*' "$NGINX_AVAILABLE" | grep 8080 | head -1 | cut -d: -f2)
-        
-        if [ -n "$MERCHANT_PORT" ]; then
-            ufw delete allow "${MERCHANT_PORT}/tcp" 2>/dev/null || true
-            echo "Closed port: ${MERCHANT_PORT}"
-        fi
-        if [ -n "$FRONTEND_PORT" ]; then
-            ufw delete allow "${FRONTEND_PORT}/tcp" 2>/dev/null || true
-            echo "Closed port: ${FRONTEND_PORT}"
-        fi
+    # Use ports extracted earlier before nginx configs were deleted
+    if [ -n "$MERCHANT_PORT" ]; then
+        ufw delete allow "${MERCHANT_PORT}/tcp" 2>/dev/null || true
+        echo "Closed port: ${MERCHANT_PORT}"
+    fi
+    if [ -n "$FRONTEND_PORT" ]; then
+        ufw delete allow "${FRONTEND_PORT}/tcp" 2>/dev/null || true
+        echo "Closed port: ${FRONTEND_PORT}"
     fi
     echo "Firewall rules updated"
 fi
@@ -130,7 +148,7 @@ echo "Removed:"
 echo "  - Docker containers: taler-*-${SUBDOMAIN}"
 echo "  - Docker volumes: postgres_data_${SUBDOMAIN}, merchant_data_${SUBDOMAIN}"
 echo "  - Installation directory: ${INSTALL_DIR}"
-echo "  - Nginx configs: taler-${SUBDOMAIN}, taler-${SUBDOMAIN}-temp"
+echo "  - Nginx configs: taler-${SUBDOMAIN}, taler-exchange-${SUBDOMAIN}, taler-merchant-${SUBDOMAIN}, taler-bank-${SUBDOMAIN}"
 echo ""
 echo "Preserved (unless deleted):"
 echo "  - SSL certificates: /etc/letsencrypt/live/${FULL_DOMAIN}/"
