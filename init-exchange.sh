@@ -312,54 +312,44 @@ if [ "$ACCOUNT_COUNT" = "0" ]; then
     echo "Wire accounts after direct insert: $ACCOUNT_COUNT"
 fi
 
-# Final verification - wait for /keys to actually work
+# Download, sign and upload online keys (needed for /keys to work)
 echo ""
-echo "=== Verifying /keys endpoint ==="
-for i in {1..30}; do
-    if curl -sf http://localhost:8081/keys > /tmp/exchange-keys.json 2>/dev/null; then
-        echo "/keys endpoint is working!"
-        if [ -s /tmp/exchange-keys.json ]; then
-            echo "Keys response size: $(wc -c < /tmp/exchange-keys.json) bytes"
-            # Try to extract master key for verification
-            MASTER_KEY_CHECK=$(cat /tmp/exchange-keys.json | python3 -c 'import sys,json; print(json.load(sys.stdin).get("master_public_key",""))' 2>/dev/null || echo "")
-            if [ -n "$MASTER_KEY_CHECK" ]; then
-                echo "Exchange master key: $MASTER_KEY_CHECK"
-            fi
-        fi
-        break
-    fi
-    echo "Waiting for /keys... ($i/30)"
-    sleep 2
-done
-
-if ! curl -sf http://localhost:8081/keys >/dev/null 2>&1; then
-    echo "WARNING: /keys endpoint still not working after configuration"
-    echo "Wire accounts in database:"
-    PGPASSWORD=talerpassword psql -h postgres -U taler -d taler_exchange -c "SELECT payto_uri, is_active FROM exchange.wire_accounts;" 2>/dev/null || true
-fi
-
-# Download current keys, sign them, and upload
+echo "=== Downloading and Signing Online Keys ==="
 echo "Downloading keys from exchange..."
-taler-exchange-offline -c "$INTERNAL_CONF" download > /tmp/keys-downloaded.json 2>&1 || {
-    echo "Download failed, output:"
-    cat /tmp/keys-downloaded.json
-}
+taler-exchange-offline -c "$INTERNAL_CONF" download 2>&1 | tee /tmp/keys-downloaded.json
+DOWNLOAD_EXIT=${PIPESTATUS[0]}
 
-if [ -s /tmp/keys-downloaded.json ] && head -10 /tmp/keys-downloaded.json 2>/dev/null | grep -q 'exchange-input-keys\|future_denoms'; then
-    echo "Got keys, signing..."
-    taler-exchange-offline -c "$INTERNAL_CONF" sign < /tmp/keys-downloaded.json > /tmp/keys-signed.json 2>&1 || {
-        echo "Sign failed, output:"
-        cat /tmp/keys-signed.json
-    }
+if [ $DOWNLOAD_EXIT -eq 0 ] && [ -s /tmp/keys-downloaded.json ] && head -1 /tmp/keys-downloaded.json | grep -qE '[\{\[]'; then
+    echo "Got keys ($(wc -c < /tmp/keys-downloaded.json) bytes), signing..."
+    taler-exchange-offline -c "$INTERNAL_CONF" sign < /tmp/keys-downloaded.json 2>&1 | tee /tmp/keys-signed.json
+    SIGN_EXIT=${PIPESTATUS[0]}
     
-    if [ -s /tmp/keys-signed.json ]; then
-        echo "Uploading signed keys..."
-        taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/keys-signed.json 2>&1 || echo "Key upload may have warnings"
+    if [ $SIGN_EXIT -eq 0 ] && [ -s /tmp/keys-signed.json ]; then
+        echo "Uploading signed keys ($(wc -c < /tmp/keys-signed.json) bytes)..."
+        taler-exchange-offline -c "$INTERNAL_CONF" upload < /tmp/keys-signed.json 2>&1
         echo "Keys signed and uploaded!"
+    else
+        echo "Sign failed or produced no output"
     fi
 else
-    echo "No valid keys to download yet (may need denominations configured)"
+    echo "Download failed or produced invalid output"
+    echo "Download exit code: $DOWNLOAD_EXIT"
 fi
+
+# Wait for keys to be processed and verify /keys works
+echo ""
+echo "=== Final Verification ==="
+sleep 3
+for i in {1..10}; do
+    if curl -sf http://localhost:8081/keys > /tmp/final-keys.json 2>/dev/null; then
+        echo "/keys endpoint is working!"
+        MASTER_KEY=$(cat /tmp/final-keys.json | python3 -c 'import sys,json; print(json.load(sys.stdin).get("master_public_key",""))' 2>/dev/null)
+        echo "Exchange Master Key: $MASTER_KEY"
+        break
+    fi
+    echo "Waiting for /keys... ($i/10)"
+    sleep 2
+done
 
 # Kill temporary httpd
 if kill -0 $HTTPD_PID 2>/dev/null; then
