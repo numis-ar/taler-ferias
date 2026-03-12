@@ -421,13 +421,104 @@ if [ "$SSL_SUCCESS" = true ]; then
         
         # Check if certificate exists for this domain (it should be in the cert file)
         if [ -n "$CERT_DIR" ] && [ -f "${CERT_DIR}/fullchain.pem" ]; then
-            echo "  Adding HTTPS for ${DNAME}"
-            # Update HTTP server block to redirect to HTTPS
-            # First, read the existing config
-            HTTP_CONFIG=$(sudo cat "/etc/nginx/sites-available/taler-${DSUB}" 2>/dev/null || echo "")
+            echo "  Adding HTTPS for ${DNAME} -> localhost:${DPORT}"
             
-            # Create HTTP server block with redirect
-            printf '%s\n' "server {
+            # For the main domain (FULL_DOMAIN), add extra routes for /webui, /bank, /exchange
+            if [ "${DNAME}" = "${FULL_DOMAIN}" ]; then
+                printf '%s\n' "server {
+    listen 80;
+    server_name ${DNAME};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name ${DNAME};
+
+    ssl_certificate ${CERT_DIR}/fullchain.pem;
+    ssl_certificate_key ${CERT_DIR}/privkey.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
+    ssl_prefer_server_ciphers off;
+
+    # Main frontend
+    location / {
+        proxy_pass http://localhost:${FRONTEND_PORT};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    # Merchant Web UI
+    location = /webui {
+        return 301 /webui/;
+    }
+    
+    location /webui/ {
+        proxy_pass http://localhost:${MERCHANT_PORT}/webui/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Prefix /webui;
+        proxy_set_header Authorization \$http_authorization;
+    }
+
+    # Merchant private API
+    location /private/ {
+        proxy_pass http://localhost:${MERCHANT_PORT}/private/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Authorization \$http_authorization;
+    }
+
+    # Bank API config endpoint
+    location /bank/config {
+        proxy_pass http://localhost:${BANK_PORT}/config;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    # Merchant config endpoint  
+    location /config {
+        proxy_pass http://localhost:${MERCHANT_PORT}/config;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    # Exchange
+    location = /exchange {
+        return 301 /exchange/;
+    }
+    
+    location /exchange/ {
+        proxy_pass http://localhost:${EXCHANGE_PORT}/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}" | sudo tee "/etc/nginx/sites-available/taler-${DSUB}" > /dev/null
+            else
+                # For other subdomains, use simple config
+                printf '%s\n' "server {
     listen 80;
     server_name ${DNAME};
 
@@ -461,6 +552,7 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }" | sudo tee "/etc/nginx/sites-available/taler-${DSUB}" > /dev/null
+            fi
         else
             echo "  No SSL certificate for ${DNAME}, keeping HTTP only"
         fi
