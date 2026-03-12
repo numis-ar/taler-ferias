@@ -559,6 +559,11 @@ server {
     done
     
     sudo nginx -t && sudo systemctl reload nginx
+    
+    # Re-enable the main domain symlink (was removed earlier for temp config)
+    sudo ln -sf "/etc/nginx/sites-available/taler-${SUBDOMAIN}" "/etc/nginx/sites-enabled/"
+    sudo nginx -t && sudo systemctl reload nginx
+    
     BASE_URL="https://${FULL_DOMAIN}"
 else
     echo "Enabling HTTP-only configuration..."
